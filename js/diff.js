@@ -75,8 +75,10 @@ const WordDiff = (() => {
         const s = segs[i];
         if (s.type === 'del') { del += s.text; i++; }
         else if (s.type === 'ins') { ins += s.text; i++; }
-        else if (s.type === 'equal' && s.text.trim() === '' &&
+        else if (s.type === 'equal' && s.text.trim() === '' && !s.text.includes('\n') &&
                  i + 1 < segs.length && segs[i + 1].type !== 'equal') {
+          // Fold same-line whitespace into the cluster; never merge across
+          // line breaks — adjacent edited paragraphs stay separate clusters.
           del += s.text; ins += s.text; i++;
         } else break;
       }
@@ -86,9 +88,15 @@ const WordDiff = (() => {
     return out;
   }
 
-  function diff(oldText, newText) {
-    let a = tokenize(oldText);
-    let b = tokenize(newText);
+  const LCS_CELL_LIMIT = 4_000_000; // max DP table size for one LCS run
+
+  /**
+   * Word-level diff of two strings, or null when the changed middle is too
+   * large for a single LCS table (caller falls back to line-level + refine).
+   */
+  function wordDiffCore(oldText, newText) {
+    const a = tokenize(oldText);
+    const b = tokenize(newText);
 
     // Trim common prefix.
     let start = 0;
@@ -97,30 +105,62 @@ const WordDiff = (() => {
     let endA = a.length, endB = b.length;
     while (endA > start && endB > start && a[endA - 1] === b[endB - 1]) { endA--; endB--; }
 
-    const prefix = a.slice(0, start).join('');
-    const suffix = a.slice(endA).join('');
     const midA = a.slice(start, endA);
     const midB = b.slice(start, endB);
-
-    let middleOps;
-    if (midA.length * midB.length > 4_000_000) {
-      // Too large for word-level LCS — diff at line granularity instead.
-      const linesA = midA.join('').split('\n');
-      const linesB = midB.join('').split('\n');
-      middleOps = lcsDiff(linesA, linesB).map(op => ({ ...op, text: op.text + '\n' }));
-      // Drop the trailing newline added to the final segment.
-      if (middleOps.length) {
-        const last = middleOps[middleOps.length - 1];
-        last.text = last.text.replace(/\n$/, '');
-      }
-    } else {
-      middleOps = lcsDiff(midA, midB);
-    }
+    if (midA.length * midB.length > LCS_CELL_LIMIT) return null;
 
     const ops = [];
+    const prefix = a.slice(0, start).join('');
+    const suffix = a.slice(endA).join('');
     if (prefix) ops.push({ type: 'equal', text: prefix });
-    ops.push(...middleOps);
+    ops.push(...lcsDiff(midA, midB));
     if (suffix) ops.push({ type: 'equal', text: suffix });
+    return ops;
+  }
+
+  function splitLines(text) {
+    // Keep the newline attached to each line so reassembly is lossless.
+    return text.length ? text.split(/(?<=\n)/) : [];
+  }
+
+  /**
+   * Two-level diff for long documents: diff lines first (cheap at any size),
+   * then refine each changed del/ins line-block pair with a word-level diff.
+   * A one-word edit in a paragraph highlights one word, not the paragraph.
+   */
+  function lineDiffRefined(oldText, newText) {
+    const linesA = splitLines(oldText);
+    const linesB = splitLines(newText);
+    if (linesA.length * linesB.length > LCS_CELL_LIMIT) {
+      // Pathological (hundreds of thousands of lines) — coarse but safe.
+      return [{ type: 'del', text: oldText }, { type: 'ins', text: newText }];
+    }
+
+    const lineOps = coalesce(lcsDiff(linesA, linesB));
+    const ops = [];
+    let i = 0;
+    while (i < lineOps.length) {
+      const cur = lineOps[i];
+      const next = lineOps[i + 1];
+      // A replaced block appears as adjacent del/ins (either order).
+      const isPair = next && cur.type !== 'equal' && next.type !== 'equal' && cur.type !== next.type;
+      if (isPair) {
+        const delText = cur.type === 'del' ? cur.text : next.text;
+        const insText = cur.type === 'ins' ? cur.text : next.text;
+        const refined = wordDiffCore(delText, insText);
+        if (refined) ops.push(...refined);
+        else ops.push({ type: 'del', text: delText }, { type: 'ins', text: insText });
+        i += 2;
+      } else {
+        ops.push(cur);
+        i += 1;
+      }
+    }
+    return ops;
+  }
+
+  function diff(oldText, newText) {
+    const ops = wordDiffCore(oldText, newText) || lineDiffRefined(oldText, newText);
     return clusterChanges(coalesce(ops));
   }
 
