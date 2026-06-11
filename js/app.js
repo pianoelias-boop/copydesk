@@ -269,14 +269,17 @@
    * so the raw stream tells us exactly what the model is doing right now.
    */
   function describeEditProgress(raw, draftChars) {
+    const fmtK = n => n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n);
     const changeCount = (raw.match(/"original_excerpt"\s*:/g) || []).length;
     if (changeCount > 0) return `documenting changes — ${changeCount} so far`;
     if (/"summary"\s*:/.test(raw)) return 'writing the edit summary';
     const keyIdx = raw.search(/"edited_text"\s*:/);
     if (keyIdx !== -1) {
+      // Received characters are measured; the total is an estimate (the
+      // rewrite is assumed to be roughly the draft's length).
       const written = raw.length - keyIdx;
-      const pct = Math.min(99, Math.round((written / Math.max(draftChars, 1)) * 100));
-      return `rewriting the draft — about ${pct}%`;
+      if (written >= draftChars) return 'finishing the rewrite';
+      return `rewriting the draft — ${fmtK(written)} of roughly ${fmtK(draftChars)} characters`;
     }
     return 'reading the draft and skills';
   }
