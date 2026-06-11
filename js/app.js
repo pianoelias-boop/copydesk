@@ -7,6 +7,7 @@
     settingsDialog: $('settings-dialog'),
     apiKeyInput: $('api-key-input'),
     typeSelect: $('type-select'),
+    deepEdit: $('deep-edit'),
     draftInput: $('draft-input'),
     wordCount: $('word-count'),
     runBtn: $('run-btn'),
@@ -225,14 +226,20 @@
       // 2. Route to applicable skills.
       const skills = await Skills.skillsForType(typeId);
 
-      // 3. Edit (with the screenshot attached, so changes come back with regions).
-      setStatus(`Editing as ${typeLabel.toLowerCase()} with ${skills.length} skill${skills.length === 1 ? '' : 's'}…`);
-      const editInput = isImage
-        ? { text: workingText, image, notes: text || null }
-        : { text: workingText };
-      const result = await ClaudeAPI.edit(editInput, typeLabel, skills, apiKey, chars => {
-        setStatus(`Editing as ${typeLabel.toLowerCase()}… (${Math.round(chars / 1000)}k characters received)`);
-      });
+      // 3. Edit — one combined pass, or the three-pass deep edit.
+      let result;
+      if (!els.deepEdit.checked) {
+        setStatus(`Editing as ${typeLabel.toLowerCase()} with ${skills.length} skill${skills.length === 1 ? '' : 's'}…`);
+        const editInput = isImage
+          ? { text: workingText, image, notes: text || null }
+          : { text: workingText };
+        result = await ClaudeAPI.edit(editInput, typeLabel, skills, apiKey, chars => {
+          setStatus(`Editing as ${typeLabel.toLowerCase()}… (${Math.round(chars / 1000)}k characters received)`);
+        });
+      } else {
+        result = await runDeepEdit(workingText, typeLabel, skills, apiKey,
+          isImage ? { image, notes: text || null } : null);
+      }
 
       // 4. Render.
       clearStatus();
@@ -243,6 +250,45 @@
     } finally {
       els.runBtn.disabled = false;
     }
+  }
+
+  /**
+   * Deep edit: three focused passes, mirroring the Article Generator's
+   * editing pipeline. Craft skills first (everything untagged), then the
+   * AI-voice regen, then the human-writing regen. Each regen pass carries a
+   * retention-inventory instruction so facts/quotes/stats survive.
+   * Changes from all passes aggregate into one list, tagged by pass.
+   */
+  async function runDeepEdit(workingText, typeLabel, skills, apiKey, imageCtx) {
+    const passes = [
+      { label: 'Craft edit', skills: skills.filter(s => !s.deepEditPass), regen: false },
+      { label: 'AI-voice pass', skills: skills.filter(s => s.deepEditPass === 'ai-voice'), regen: true },
+      { label: 'Human-writing pass', skills: skills.filter(s => s.deepEditPass === 'human-writing'), regen: true },
+    ].filter(p => p.skills.length > 0);
+
+    let textState = workingText;
+    const allChanges = [];
+    const summaries = [];
+
+    for (let i = 0; i < passes.length; i++) {
+      const p = passes[i];
+      const stage = `Pass ${i + 1} of ${passes.length} — ${p.label.toLowerCase()}`;
+      setStatus(`${stage}…`);
+      // The screenshot rides along only on the first pass (that's where
+      // change regions get located); regen passes work on text alone.
+      const input = (i === 0 && imageCtx)
+        ? { text: textState, image: imageCtx.image, notes: imageCtx.notes }
+        : { text: textState };
+      const r = await ClaudeAPI.edit(input, typeLabel, p.skills, apiKey, chars => {
+        setStatus(`${stage}… (${Math.round(chars / 1000)}k characters received)`);
+      }, p.regen ? { label: p.label, regen: true } : undefined);
+
+      textState = r.edited_text;
+      for (const c of r.changes) allChanges.push({ ...c, pass: p.label });
+      summaries.push(`${p.label}: ${r.summary}`);
+    }
+
+    return { edited_text: textState, summary: summaries.join('\n'), changes: allChanges };
   }
 
   // ---------- rendering ----------
@@ -347,6 +393,13 @@
     tag.className = 'skill-tag';
     tag.textContent = skill ? skill.label : change.skill;
     card.appendChild(tag);
+
+    if (change.pass) {
+      const passTag = document.createElement('span');
+      passTag.className = 'pass-tag';
+      passTag.textContent = change.pass;
+      card.appendChild(passTag);
+    }
 
     if (change.original_excerpt) {
       const before = document.createElement('div');

@@ -38,6 +38,7 @@ const Skills = (() => {
     return Promise.all(applicable.map(async s => ({
       id: s.id,
       label: s.label,
+      deepEditPass: s.deepEditPass || null,
       content: await loadSkillFile(s.file),
     })));
   }

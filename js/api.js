@@ -154,10 +154,34 @@ const ClaudeAPI = (() => {
     };
   }
 
-  function buildEditSystemPrompt(typeLabel, skills, image) {
-    const skillBlocks = skills.map(s =>
+  function skillBlocksFor(skills) {
+    return skills.map(s =>
       `<skill id="${s.id}" name="${s.label}">\n${s.content}\n</skill>`
     ).join('\n\n');
+  }
+
+  /**
+   * System prompt for a deep-edit regeneration pass (AI-voice / human-writing).
+   * Mirrors the Article Generator's full-regen-with-retention methodology:
+   * build a retention inventory, rewrite against one editorial concern,
+   * lose nothing.
+   */
+  function buildRegenPassSystemPrompt(typeLabel, skills, passLabel) {
+    return `You are running the "${passLabel}" editing pass on a piece of marketing copy classified as: ${typeLabel}. This is one pass in a multi-pass pipeline — earlier passes already handled copy, structure, and craft. Your ONLY concern is the editorial territory of the skills below. Do not re-litigate structural or copy decisions from earlier passes.
+
+${skillBlocksFor(skills)}
+
+Method — full rewrite with retention:
+1. First, build a retention inventory of the draft: every fact, statistic, quote, source attribution, link, named entity, and substantive claim. Every item must survive your rewrite — meanings intact, quoted wording verbatim, no attribution lost, no number changed. Losing or altering any inventory item is a failed pass.
+2. Rewrite the piece as deeply as the skills require, but only for the concerns they cover. If a sentence is already clean by these skills' standards, leave it alone.
+3. Preserve the original formatting conventions exactly (markdown syntax, headings, line breaks, list structure).
+4. Do not let the piece grow: the rewrite should be the same length or tighter, never more than ~10% longer.
+
+Record every meaningful change in the changes array with a short verbatim excerpt of the text you received, the revision, and the rationale, attributing each change to the skill id that motivated it. Group word-level tweaks within one sentence into a single change entry. The edited_text field must contain the COMPLETE rewritten piece from first word to last — never truncate or summarize it. The summary should describe this pass's work in one or two sentences.`;
+  }
+
+  function buildEditSystemPrompt(typeLabel, skills, image) {
+    const skillBlocks = skillBlocksFor(skills);
 
     let prompt = `You are a senior marketing copy editor. You are editing a piece classified as: ${typeLabel}.
 
@@ -181,11 +205,14 @@ The draft was provided as a screenshot (${image.width}×${image.height} pixels),
   }
 
   /**
-   * Run the editing pass with streaming (long outputs), returning parsed JSON.
+   * Run one editing pass with streaming (long outputs), returning parsed JSON.
    * input: { text: string (the working text), image?: {base64, mediaType, width, height}, notes?: string }
+   * passOpts (optional): { label, regen: true } switches to the deep-edit
+   * regeneration prompt (retention inventory, single editorial concern).
    * onProgress receives the running count of characters received.
    */
-  async function edit(input, typeLabel, skills, apiKey, onProgress) {
+  async function edit(input, typeLabel, skills, apiKey, onProgress, passOpts) {
+    const isRegen = !!(passOpts && passOpts.regen);
     const content = [];
     if (input.image) {
       content.push(imageBlock(input.image));
@@ -193,8 +220,13 @@ The draft was provided as a screenshot (${image.width}×${image.height} pixels),
       if (input.notes) prompt += `\n\nNotes from the author:\n${input.notes}`;
       content.push({ type: 'text', text: prompt });
     } else {
-      content.push({ type: 'text', text: `Edit this draft:\n\n<draft>\n${input.text}\n</draft>` });
+      const verb = isRegen ? 'Run your editing pass on this draft' : 'Edit this draft';
+      content.push({ type: 'text', text: `${verb}:\n\n<draft>\n${input.text}\n</draft>` });
     }
+
+    const system = isRegen
+      ? buildRegenPassSystemPrompt(typeLabel, skills, passOpts.label)
+      : buildEditSystemPrompt(typeLabel, skills, input.image);
 
     const res = await fetch(API_URL, {
       method: 'POST',
@@ -204,7 +236,7 @@ The draft was provided as a screenshot (${image.width}×${image.height} pixels),
         max_tokens: 64000,
         stream: true,
         thinking: { type: 'adaptive' },
-        system: buildEditSystemPrompt(typeLabel, skills, input.image),
+        system,
         messages: [{ role: 'user', content }],
         output_config: { format: { type: 'json_schema', schema: editSchema(!!input.image) } },
       }),

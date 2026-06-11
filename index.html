@@ -64,7 +64,13 @@
       <textarea id="draft-input" placeholder="Paste your draft here — a landing page, email, blog post, social post, ad copy, or press release…" spellcheck="false"></textarea>
       <div class="run-row">
         <span id="word-count" class="muted"></span>
-        <button id="run-btn" class="primary-btn">Run editing pipeline</button>
+        <div class="run-controls">
+          <label class="deep-toggle" title="Three focused passes: craft edit, then an AI-voice rewrite, then a human-writing rewrite — each preserving every fact, quote, and number. Slower and ~3× the cost; noticeably deeper edit.">
+            <input type="checkbox" id="deep-edit">
+            Deep edit <span class="muted">(3 passes)</span>
+          </label>
+          <button id="run-btn" class="primary-btn">Run editing pipeline</button>
+        </div>
       </div>
     </section>
 

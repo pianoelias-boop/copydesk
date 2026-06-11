@@ -119,6 +119,14 @@ When a section presents a cluster of facts (numbers, dates, comparison data), th
 
 ---
 
+## Visual rhythm
+
+Beyond the paragraph mechanics in the Internet Writing Style Guide, two structural rules from the formatting pass:
+
+- **The 4-paragraph rule:** no section ships with four or more consecutive plain-prose paragraphs anywhere inside it. When found, restructure — convert content to bullets, split with an H3, pull a sourced quote into a blockquote, or add an image placeholder (`[image: <description>]`).
+- **Visual-break density scales with section length:** sections of 300–500 words need at least one structural break; 500–700 words need two, distributed; 700+ words need three, distributed. A break is a bullet list, table, blockquote, H3, image placeholder, code block, or labeled callout.
+- **Parallel content becomes structure:** three or more parallel paragraphs ("Year 1... Year 2... Year 3...") become a list or table; three or more parallel attributes across entities become a table; bold-prefixed sequential paragraphs become bullets with bold leads.
+
 ## Length
 
 Comprehensiveness is not a virtue. Reference points for where good pieces land: comparisons 2,500–4,000 words, how-tos 1,500–2,500, listicles 2,000–3,500, case studies usually under 2,000. These are descriptive, not targets. A piece running past ~5,000 words without a specific reason is the "comprehensive" instinct overriding editorial choice — recommend cuts, starting with sections whose claims repeat.
