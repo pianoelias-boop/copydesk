@@ -263,6 +263,24 @@
   }
   function clearError() { els.errorSection.classList.add('hidden'); }
 
+  /**
+   * Turn the partially-received edit JSON into a phase description. The
+   * response is generated in schema order (edited_text → summary → changes),
+   * so the raw stream tells us exactly what the model is doing right now.
+   */
+  function describeEditProgress(raw, draftChars) {
+    const changeCount = (raw.match(/"original_excerpt"\s*:/g) || []).length;
+    if (changeCount > 0) return `documenting changes — ${changeCount} so far`;
+    if (/"summary"\s*:/.test(raw)) return 'writing the edit summary';
+    const keyIdx = raw.search(/"edited_text"\s*:/);
+    if (keyIdx !== -1) {
+      const written = raw.length - keyIdx;
+      const pct = Math.min(99, Math.round((written / Math.max(draftChars, 1)) * 100));
+      return `rewriting the draft — about ${pct}%`;
+    }
+    return 'reading the draft and skills';
+  }
+
   // ---------- pipeline ----------
   els.runBtn.addEventListener('click', runPipeline);
 
@@ -343,8 +361,9 @@
         const editInput = isImage
           ? { text: workingText, image, notes: text || null }
           : { text: workingText };
-        result = await ClaudeAPI.edit(editInput, typeLabel, skills, apiKey, chars => {
-          Progress.sub(`${Math.round(chars / 1000)}k characters received`);
+        const draftChars = workingText.length;
+        result = await ClaudeAPI.edit(editInput, typeLabel, skills, apiKey, raw => {
+          Progress.sub(describeEditProgress(raw, draftChars));
         });
         Progress.done('edit', `${result.changes.length} changes`);
       } else {
@@ -390,8 +409,9 @@
       const input = (i === 0 && imageCtx)
         ? { text: textState, image: imageCtx.image, notes: imageCtx.notes }
         : { text: textState };
-      const r = await ClaudeAPI.edit(input, typeLabel, p.skills, apiKey, chars => {
-        Progress.sub(`${Math.round(chars / 1000)}k characters received`);
+      const draftChars = textState.length;
+      const r = await ClaudeAPI.edit(input, typeLabel, p.skills, apiKey, raw => {
+        Progress.sub(describeEditProgress(raw, draftChars));
       }, p.regen ? { label: p.label, regen: true } : undefined);
 
       textState = r.edited_text;

@@ -57,10 +57,12 @@ const ClaudeAPI = (() => {
 
   /**
    * Run a prompt through the local serve.py bridge (claude CLI, billed to
-   * your Claude subscription). The schema is enforced by instruction +
-   * tolerant parsing rather than by the API's structured outputs.
+   * your Claude subscription). The bridge streams NDJSON events
+   * ({t:'delta'|'done'|'error'}); onProgress receives the accumulated raw
+   * text so far. The schema is enforced by instruction + tolerant parsing
+   * rather than by the API's structured outputs.
    */
-  async function localCall(system, user, schema, image) {
+  async function localCall(system, user, schema, image, onProgress) {
     const fullSystem = system +
       '\n\nOutput requirement: respond with ONLY a single JSON object that matches this JSON schema exactly — no markdown fences, no commentary before or after:\n' +
       JSON.stringify(schema);
@@ -78,11 +80,43 @@ const ClaudeAPI = (() => {
     } catch (_) {
       throw new Error('Could not reach the local backend. Start the app with `python3 serve.py` to use Local Claude Code, or switch to the API backend in Settings.');
     }
-    const data = await res.json().catch(() => null);
     if (!res.ok) {
+      const data = await res.json().catch(() => null);
       throw new Error((data && data.error) || `Local backend error (HTTP ${res.status}).`);
     }
-    return extractJson(data.text);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let accumulated = '';
+    let resultText = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buffer.indexOf('\n')) !== -1) {
+        const line = buffer.slice(0, nl).trim();
+        buffer = buffer.slice(nl + 1);
+        if (!line) continue;
+        let event;
+        try { event = JSON.parse(line); } catch (_) { continue; }
+        if (event.t === 'delta') {
+          accumulated += event.text;
+          if (onProgress) onProgress(accumulated);
+        } else if (event.t === 'done') {
+          resultText = event.text;
+        } else if (event.t === 'error') {
+          throw new Error(event.error);
+        }
+      }
+    }
+
+    if (resultText === null) {
+      throw new Error('The local backend stream ended without a result. Check the serve.py terminal for details.');
+    }
+    return extractJson(resultText);
   }
 
   // ---------- classification (and transcription, for screenshots) ----------
@@ -282,8 +316,7 @@ The draft was provided as a screenshot (${image.width}×${image.height} pixels),
       : buildEditSystemPrompt(typeLabel, skills, input.image);
 
     if (backend() === 'local') {
-      // No streaming through the CLI bridge — the spinner carries the wait.
-      return localCall(system, userText, editSchema(!!input.image), input.image);
+      return localCall(system, userText, editSchema(!!input.image), input.image, onProgress);
     }
 
     const content = [];
@@ -331,7 +364,7 @@ The draft was provided as a screenshot (${image.width}×${image.height} pixels),
           try { event = JSON.parse(line.slice(5).trim()); } catch (_) { continue; }
           if (event.type === 'content_block_delta' && event.delta && event.delta.type === 'text_delta') {
             output += event.delta.text;
-            if (onProgress) onProgress(output.length);
+            if (onProgress) onProgress(output);
           } else if (event.type === 'message_delta' && event.delta && event.delta.stop_reason) {
             stopReason = event.delta.stop_reason;
           } else if (event.type === 'error') {

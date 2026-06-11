@@ -6,6 +6,9 @@ prompts through the `claude` CLI in headless print mode. That lets you test
 the app against your Claude subscription (Pro/Max) instead of paying API
 credits — pick "Local Claude Code" in the app's Settings.
 
+Responses stream back as NDJSON events ({"t":"delta"|"done"|"error"}) so the
+app can show live progress while the CLI works.
+
 Local testing only: the deployed (GitHub Pages) version has no server, so
 visitors there use the API-key backend.
 
@@ -19,6 +22,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -27,15 +31,42 @@ os.chdir(ROOT)
 CLAUDE_TIMEOUT_SECONDS = 1500  # deep-edit passes on long drafts can run a while
 
 
-def run_claude(req):
-    claude = shutil.which("claude")
-    if not claude:
+def claude_path():
+    path = shutil.which("claude")
+    if not path:
         raise RuntimeError(
             "`claude` CLI not found on PATH. Install Claude Code and log in, "
             "or switch Settings back to the API-key backend."
         )
+    return path
 
-    args = [claude, "-p", "--output-format", "json"]
+
+# Older CLI versions don't support partial-message streaming; degrade to
+# done-only events (no live deltas) rather than failing.
+def supports_partial_messages(claude):
+    try:
+        help_text = subprocess.run(
+            [claude, "--help"], capture_output=True, text=True, timeout=20
+        ).stdout
+        return "--include-partial-messages" in help_text
+    except Exception:
+        return False
+
+
+_PARTIAL_OK = None
+
+
+def run_claude_streaming(req, emit):
+    """Run the prompt through `claude -p`, emitting NDJSON progress events."""
+    global _PARTIAL_OK
+    claude = claude_path()
+    if _PARTIAL_OK is None:
+        _PARTIAL_OK = supports_partial_messages(claude)
+
+    args = [claude, "-p", "--output-format", "stream-json", "--verbose"]
+    if _PARTIAL_OK:
+        args.append("--include-partial-messages")
+
     prompt_parts = []
     img_path = None
 
@@ -55,53 +86,99 @@ def run_claude(req):
     prompt_parts.append(req["user"])
     prompt = "\n\n".join(prompt_parts)
 
+    proc = subprocess.Popen(
+        args,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    watchdog = threading.Timer(CLAUDE_TIMEOUT_SECONDS, proc.kill)
+    watchdog.start()
+    result_text = None
     try:
-        proc = subprocess.run(
-            args,
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=CLAUDE_TIMEOUT_SECONDS,
-        )
+        proc.stdin.write(prompt)
+        proc.stdin.close()
+
+        for line in proc.stdout:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if ev.get("type") == "stream_event":
+                delta = (ev.get("event") or {}).get("delta") or {}
+                if delta.get("type") == "text_delta" and delta.get("text"):
+                    emit({"t": "delta", "text": delta["text"]})
+            elif ev.get("type") == "result":
+                if ev.get("is_error"):
+                    raise RuntimeError(ev.get("result") or "claude CLI reported an error")
+                result_text = ev.get("result", "")
+
+        proc.wait()
+        if proc.returncode != 0:
+            detail = (proc.stderr.read() or "").strip()[-800:]
+            raise RuntimeError(
+                f"claude CLI exited with {proc.returncode}"
+                + (f": {detail}" if detail else " (killed after timeout?)")
+            )
+        if result_text is None:
+            raise RuntimeError("claude CLI produced no result")
+        emit({"t": "done", "text": result_text})
     finally:
+        watchdog.cancel()
+        if proc.poll() is None:
+            proc.kill()
         if img_path:
             try:
                 os.unlink(img_path)
             except OSError:
                 pass
 
-    if proc.returncode != 0:
-        detail = (proc.stderr or proc.stdout or "").strip()[-800:]
-        raise RuntimeError(f"claude CLI exited with {proc.returncode}: {detail}")
-
-    envelope = json.loads(proc.stdout)
-    if envelope.get("is_error"):
-        raise RuntimeError(envelope.get("result") or "claude CLI reported an error")
-    return envelope.get("result", "")
-
 
 class Handler(SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
-    def _send_json(self, status, payload):
-        body = json.dumps(payload).encode()
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
+    def _chunk(self, data: bytes):
+        self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n")
+        self.wfile.flush()
 
     def do_POST(self):
         if self.path != "/local/claude":
-            self._send_json(404, {"error": "unknown endpoint"})
+            body = json.dumps({"error": "unknown endpoint"}).encode()
+            self.send_response(404)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
+
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.send_header("Cache-Control", "no-cache")
+        self.end_headers()
+
+        def emit(obj):
+            self._chunk((json.dumps(obj) + "\n").encode())
+
         try:
             length = int(self.headers.get("Content-Length", 0))
             req = json.loads(self.rfile.read(length))
-            text = run_claude(req)
-            self._send_json(200, {"text": text})
+            run_claude_streaming(req, emit)
         except Exception as e:  # surfaced verbatim in the app's error box
-            self._send_json(500, {"error": str(e)})
+            try:
+                emit({"t": "error", "error": str(e)})
+            except Exception:
+                pass
+        finally:
+            try:
+                self.wfile.write(b"0\r\n\r\n")
+                self.wfile.flush()
+            except Exception:
+                pass
 
     def log_message(self, fmt, *args):
         # Quiet static-file logs; keep the bridge calls visible.
@@ -113,7 +190,7 @@ def main():
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
     print(f"Copydesk running at http://localhost:{port}")
-    print("Local Claude Code backend available at POST /local/claude")
+    print("Local Claude Code backend available at POST /local/claude (streaming)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
