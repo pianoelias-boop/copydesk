@@ -25,8 +25,12 @@
     changesList: $('changes-list'),
     changeCount: $('change-count'),
     viewScreenshot: $('view-screenshot'),
+    viewCompare: $('view-compare'),
     viewDiff: $('view-diff'),
     viewClean: $('view-clean'),
+    compareOutput: $('compare-output'),
+    origPane: $('orig-pane'),
+    editPane: $('edit-pane'),
     copyBtn: $('copy-btn'),
     imagePreview: $('image-preview'),
     imageThumb: $('image-thumb'),
@@ -318,8 +322,10 @@
     // Summary.
     els.editSummary.textContent = result.summary;
 
-    // Diff view.
+    // Build all text views from one diff.
     const segments = WordDiff.diff(originalText, result.edited_text);
+
+    // Inline view: full stream of equal/del/ins.
     els.diffOutput.textContent = '';
     for (const seg of segments) {
       if (seg.type === 'equal') {
@@ -329,6 +335,29 @@
         el.textContent = seg.text;
         els.diffOutput.appendChild(el);
       }
+    }
+
+    // Side-by-side view: original pane gets equal+del, edited pane equal+ins.
+    els.origPane.textContent = '';
+    els.editPane.textContent = '';
+    for (const seg of segments) {
+      if (seg.type === 'equal') {
+        els.origPane.appendChild(document.createTextNode(seg.text));
+        els.editPane.appendChild(document.createTextNode(seg.text));
+      } else if (seg.type === 'del') {
+        const el = document.createElement('del');
+        el.textContent = seg.text;
+        els.origPane.appendChild(el);
+      } else {
+        const el = document.createElement('ins');
+        el.textContent = seg.text;
+        els.editPane.appendChild(el);
+      }
+    }
+
+    // Make highlights navigable: tooltip with the rationale, click → card.
+    for (const container of [els.diffOutput, els.origPane, els.editPane]) {
+      linkSpansToChanges(container, result.changes);
     }
 
     // Clean view.
@@ -341,7 +370,7 @@
       showScreenshotView();
     } else {
       els.viewScreenshot.classList.add('hidden');
-      showDiffView();
+      showCompareView();
     }
 
     // Changes panel.
@@ -438,14 +467,71 @@
           return;
         }
       }
+      const compareVisible = !els.compareOutput.classList.contains('hidden');
+      if (compareVisible && highlightChangeInCompare(index)) return;
       highlightChangeInDiff(change);
     });
     return card;
   }
 
+  /** In the side-by-side view, flash this change's highlight in both panes. */
+  function highlightChangeInCompare(index) {
+    let found = false;
+    for (const pane of [els.editPane, els.origPane]) {
+      const el = pane.querySelector(`[data-change="${index}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        flash(el);
+        found = true;
+      }
+    }
+    return found;
+  }
+
   function flash(el) {
     el.classList.add('flash');
     setTimeout(() => el.classList.remove('flash'), 1600);
+  }
+
+  const normText = s => s.replace(/\s+/g, ' ').trim().toLowerCase();
+
+  /**
+   * Attach each ins/del highlight to the change card that explains it:
+   * tooltip shows the rationale, click scrolls to and flashes the card.
+   * Matching is fuzzy (excerpt and segment text overlap either way) — spans
+   * the model didn't itemize stay plain highlights.
+   */
+  function linkSpansToChanges(container, changes) {
+    for (const el of container.querySelectorAll('ins, del')) {
+      const segText = normText(el.textContent);
+      if (!segText) continue;
+      const idx = changes.findIndex(c => {
+        const excerpt = normText(el.tagName === 'INS' ? c.revised_excerpt : c.original_excerpt);
+        return excerpt && (excerpt.includes(segText) || segText.includes(excerpt));
+      });
+      if (idx === -1) continue;
+      el.dataset.change = idx;
+      el.title = changes[idx].rationale;
+      el.addEventListener('click', () => {
+        const card = els.changesList.children[idx];
+        if (!card) return;
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        flash(card);
+      });
+    }
+  }
+
+  // Proportional scroll-sync between the compare panes.
+  let syncingPane = false;
+  function syncPane(from, to) {
+    if (syncingPane) return;
+    syncingPane = true;
+    const fromMax = from.scrollHeight - from.clientHeight;
+    const toMax = to.scrollHeight - to.clientHeight;
+    if (fromMax > 0 && toMax > 0) {
+      to.scrollTop = (from.scrollTop / fromMax) * toMax;
+    }
+    requestAnimationFrame(() => { syncingPane = false; });
   }
 
   /** Scroll the diff to the segment that best matches this change and flash it. */
@@ -472,19 +558,26 @@
   // ---------- view toggles ----------
   function setView(view) {
     els.screenshotOutput.classList.toggle('hidden', view !== 'screenshot');
+    els.compareOutput.classList.toggle('hidden', view !== 'compare');
     els.diffOutput.classList.toggle('hidden', view !== 'diff');
     els.cleanOutput.classList.toggle('hidden', view !== 'clean');
     els.viewScreenshot.classList.toggle('active', view === 'screenshot');
+    els.viewCompare.classList.toggle('active', view === 'compare');
     els.viewDiff.classList.toggle('active', view === 'diff');
     els.viewClean.classList.toggle('active', view === 'clean');
   }
+  const showCompareView = () => setView('compare');
   const showDiffView = () => setView('diff');
   const showCleanView = () => setView('clean');
   const showScreenshotView = () => setView('screenshot');
 
   els.viewScreenshot.addEventListener('click', showScreenshotView);
+  els.viewCompare.addEventListener('click', showCompareView);
   els.viewDiff.addEventListener('click', showDiffView);
   els.viewClean.addEventListener('click', showCleanView);
+
+  els.origPane.addEventListener('scroll', () => syncPane(els.origPane, els.editPane));
+  els.editPane.addEventListener('scroll', () => syncPane(els.editPane, els.origPane));
 
   els.copyBtn.addEventListener('click', async () => {
     await navigator.clipboard.writeText(lastEditedText);

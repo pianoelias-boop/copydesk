@@ -127,19 +127,33 @@
             <h2>Edited draft</h2>
             <div class="view-toggle">
               <button id="view-screenshot" class="toggle-btn hidden">Screenshot</button>
-              <button id="view-diff" class="toggle-btn active">Changes</button>
+              <button id="view-compare" class="toggle-btn active">Side by side</button>
+              <button id="view-diff" class="toggle-btn">Inline</button>
               <button id="view-clean" class="toggle-btn">Clean</button>
               <button id="copy-btn" class="ghost-btn">Copy edited text</button>
             </div>
           </div>
+          <p class="view-hint muted">Hover a highlight to see why it changed; click it to jump to the full note below.</p>
           <div id="screenshot-output" class="screenshot-output hidden">
             <div id="screenshot-wrap" class="screenshot-wrap">
               <img id="screenshot-img" alt="Annotated screenshot">
               <div id="annotation-layer" class="annotation-layer"></div>
             </div>
           </div>
-          <div id="diff-output" class="diff-output"></div>
-          <div id="clean-output" class="diff-output hidden"></div>
+          <div id="compare-output" class="compare-output hidden">
+            <div class="compare-grid">
+              <div class="pane-wrap">
+                <div class="pane-label">Original</div>
+                <div id="orig-pane" class="diff-output pane"></div>
+              </div>
+              <div class="pane-wrap">
+                <div class="pane-label">Edited</div>
+                <div id="edit-pane" class="diff-output pane"></div>
+              </div>
+            </div>
+          </div>
+          <div id="diff-output" class="diff-output scroll-capped hidden"></div>
+          <div id="clean-output" class="diff-output scroll-capped hidden"></div>
         </div>
 
         <aside class="panel changes-panel">
