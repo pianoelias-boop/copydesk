@@ -13,7 +13,7 @@
     runBtn: $('run-btn'),
     emptyState: $('empty-state'),
     statusSection: $('status-section'),
-    statusText: $('status-text'),
+    stageList: $('stage-list'),
     errorSection: $('error-section'),
     errorText: $('error-text'),
     resultsSection: $('results-section'),
@@ -173,12 +173,90 @@
     }
   }).catch(err => showError(err.message));
 
-  // ---------- status / error ----------
-  function setStatus(text) {
-    els.statusSection.classList.remove('hidden');
-    els.statusText.textContent = text;
-  }
-  function clearStatus() { els.statusSection.classList.add('hidden'); }
+  // ---------- progress stages ----------
+  /**
+   * Stage checklist shown while the pipeline runs. Each stage is declared up
+   * front, then marked active (spinner + elapsed seconds + live sub-status)
+   * and done (check + total time) as the run proceeds.
+   */
+  const Progress = (() => {
+    let timer = null;
+    let activeId = null;
+    let activeStart = 0;
+    let activeSub = '';
+
+    function rowFor(id) { return els.stageList.querySelector(`[data-id="${id}"]`); }
+
+    function begin(defs) {
+      els.stageList.textContent = '';
+      for (const d of defs) {
+        const row = document.createElement('div');
+        row.className = 'stage pending';
+        row.dataset.id = d.id;
+        const icon = document.createElement('span');
+        icon.className = 'stage-icon';
+        const label = document.createElement('span');
+        label.className = 'stage-label';
+        label.textContent = d.label;
+        const sub = document.createElement('span');
+        sub.className = 'stage-sub muted';
+        row.append(icon, label, sub);
+        els.stageList.appendChild(row);
+      }
+      els.statusSection.classList.remove('hidden');
+      clearInterval(timer);
+      timer = setInterval(renderActive, 1000);
+    }
+
+    function renderActive() {
+      const row = activeId && rowFor(activeId);
+      if (!row) return;
+      const secs = Math.round((Date.now() - activeStart) / 1000);
+      row.querySelector('.stage-sub').textContent =
+        activeSub ? `${activeSub} · ${secs}s` : `${secs}s`;
+    }
+
+    function start(id, sub) {
+      activeId = id;
+      activeStart = Date.now();
+      activeSub = sub || '';
+      const row = rowFor(id);
+      if (row) row.className = 'stage active';
+      renderActive();
+    }
+
+    function sub(text) {
+      activeSub = text;
+      renderActive();
+    }
+
+    function done(id, note) {
+      const row = rowFor(id);
+      if (!row) return;
+      row.className = 'stage done';
+      const secs = Math.round((Date.now() - activeStart) / 1000);
+      row.querySelector('.stage-sub').textContent = note ? `${note} · ${secs}s` : `${secs}s`;
+      if (activeId === id) activeId = null;
+    }
+
+    function fail() {
+      const row = activeId && rowFor(activeId);
+      if (row) {
+        row.className = 'stage failed';
+        row.querySelector('.stage-sub').textContent = 'failed';
+      }
+      clearInterval(timer);
+      activeId = null;
+    }
+
+    function finish() {
+      clearInterval(timer);
+      activeId = null;
+      els.statusSection.classList.add('hidden');
+    }
+
+    return { begin, start, sub, done, fail, finish };
+  })();
   function showError(message) {
     els.errorSection.classList.remove('hidden');
     els.errorText.textContent = message;
@@ -207,21 +285,38 @@
       const types = await Skills.getTypes();
       const isImage = !!currentImage;
       const image = currentImage; // snapshot, in case the user clears it mid-run
+      const manualType = els.typeSelect.value !== 'auto';
+      const deep = els.deepEdit.checked;
+      const isLocal = (localStorage.getItem('copydesk-backend') || 'api') === 'local';
+      // No streaming through the local bridge, so set wait expectations.
+      const waitNote = isLocal ? 'running through Claude Code on your subscription' : '';
+
+      // Declare the run's stages up front.
+      const stages = [];
+      if (isImage) stages.push({ id: 'classify', label: 'Reading the screenshot — identifying the writing type and transcribing the copy' });
+      else if (!manualType) stages.push({ id: 'classify', label: 'Identifying the kind of writing' });
+      if (deep) {
+        stages.push({ id: 'pass1', label: 'Pass 1 of 3 — craft edit (copywriting, structure, and format skills)' });
+        stages.push({ id: 'pass2', label: 'Pass 2 of 3 — AI-voice rewrite (avoid-AI-writing + vocabulary blacklist)' });
+        stages.push({ id: 'pass3', label: 'Pass 3 of 3 — human-writing rewrite' });
+      } else {
+        stages.push({ id: 'edit', label: 'Editing with your skills' });
+      }
+      Progress.begin(stages);
 
       // 1. Classify (and transcribe, for screenshots) — or use the manual override.
       //    With a manual type + screenshot we still need the transcription, so
       //    the classify call runs whenever there's an image.
       let typeId, typeLabel, classification = null, workingText = text;
-      const manualType = els.typeSelect.value !== 'auto';
 
-      if (isImage) {
-        setStatus('Reading the screenshot…');
-        classification = await ClaudeAPI.classify({ text, image }, types, apiKey);
-        workingText = classification.transcription;
-        if (!workingText || !workingText.trim()) throw new Error('No copy could be read from the screenshot.');
-      } else if (!manualType) {
-        setStatus('Identifying the kind of writing…');
-        classification = await ClaudeAPI.classify({ text }, types, apiKey);
+      if (isImage || !manualType) {
+        Progress.start('classify', waitNote);
+        classification = await ClaudeAPI.classify(
+          isImage ? { text, image } : { text }, types, apiKey);
+        if (isImage) {
+          workingText = classification.transcription;
+          if (!workingText || !workingText.trim()) throw new Error('No copy could be read from the screenshot.');
+        }
       }
 
       if (manualType) {
@@ -233,30 +328,35 @@
         typeLabel = match ? match.label : 'General marketing copy';
         if (!match) typeId = 'other';
       }
+      if (classification) {
+        Progress.done('classify', `${typeLabel} · ${classification.confidence} confidence`);
+      }
 
       // 2. Route to applicable skills.
       const skills = await Skills.skillsForType(typeId);
 
       // 3. Edit — one combined pass, or the three-pass deep edit.
       let result;
-      if (!els.deepEdit.checked) {
-        setStatus(`Editing as ${typeLabel.toLowerCase()} with ${skills.length} skill${skills.length === 1 ? '' : 's'}…`);
+      if (!deep) {
+        Progress.start('edit', waitNote ||
+          `as ${typeLabel.toLowerCase()}, ${skills.length} skills`);
         const editInput = isImage
           ? { text: workingText, image, notes: text || null }
           : { text: workingText };
         result = await ClaudeAPI.edit(editInput, typeLabel, skills, apiKey, chars => {
-          setStatus(`Editing as ${typeLabel.toLowerCase()}… (${Math.round(chars / 1000)}k characters received)`);
+          Progress.sub(`${Math.round(chars / 1000)}k characters received`);
         });
+        Progress.done('edit', `${result.changes.length} changes`);
       } else {
         result = await runDeepEdit(workingText, typeLabel, skills, apiKey,
-          isImage ? { image, notes: text || null } : null);
+          isImage ? { image, notes: text || null } : null, waitNote);
       }
 
       // 4. Render.
-      clearStatus();
+      Progress.finish();
       render(workingText, result, { typeLabel, classification: manualType ? null : classification, skills, image });
     } catch (err) {
-      clearStatus();
+      Progress.fail();
       showError(err.message);
     } finally {
       els.runBtn.disabled = false;
@@ -270,7 +370,7 @@
    * retention-inventory instruction so facts/quotes/stats survive.
    * Changes from all passes aggregate into one list, tagged by pass.
    */
-  async function runDeepEdit(workingText, typeLabel, skills, apiKey, imageCtx) {
+  async function runDeepEdit(workingText, typeLabel, skills, apiKey, imageCtx, waitNote) {
     const passes = [
       { label: 'Craft edit', skills: skills.filter(s => !s.deepEditPass), regen: false },
       { label: 'AI-voice pass', skills: skills.filter(s => s.deepEditPass === 'ai-voice'), regen: true },
@@ -283,20 +383,21 @@
 
     for (let i = 0; i < passes.length; i++) {
       const p = passes[i];
-      const stage = `Pass ${i + 1} of ${passes.length} — ${p.label.toLowerCase()}`;
-      setStatus(`${stage}…`);
+      const stageId = `pass${i + 1}`;
+      Progress.start(stageId, waitNote || `${p.skills.length} skills`);
       // The screenshot rides along only on the first pass (that's where
       // change regions get located); regen passes work on text alone.
       const input = (i === 0 && imageCtx)
         ? { text: textState, image: imageCtx.image, notes: imageCtx.notes }
         : { text: textState };
       const r = await ClaudeAPI.edit(input, typeLabel, p.skills, apiKey, chars => {
-        setStatus(`${stage}… (${Math.round(chars / 1000)}k characters received)`);
+        Progress.sub(`${Math.round(chars / 1000)}k characters received`);
       }, p.regen ? { label: p.label, regen: true } : undefined);
 
       textState = r.edited_text;
       for (const c of r.changes) allChanges.push({ ...c, pass: p.label });
       summaries.push(`${p.label}: ${r.summary}`);
+      Progress.done(stageId, `${r.changes.length} changes`);
     }
 
     return { edited_text: textState, summary: summaries.join('\n'), changes: allChanges };
