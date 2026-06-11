@@ -39,6 +39,22 @@ A minute later the app is live at `https://<your-username>.github.io/copydesk/`.
 
 > **Note on the API key:** because this is a static site, each visitor supplies their own Anthropic API key (it never leaves their browser except to call Anthropic directly). That's the right model for a personal tool or a tool shared with teammates who have their own keys. If you later want strangers to use it without keys, add a small serverless proxy (Vercel/Netlify function) that holds one key server-side.
 
+## Headless use (for agents and automations)
+
+When running locally via `serve.py`, the full pipeline is also exposed as an HTTP endpoint — draft in, clean copy + change log out — so other agents, scripts, or workflows can call it:
+
+```sh
+curl -X POST http://localhost:8765/api/edit \
+  -H 'content-type: application/json' \
+  -d '{"text": "Your draft here…", "deep": true}'
+```
+
+Request fields: `text` (required), `type` (optional type id from `skills/manifest.json` — omit to auto-classify), `deep` (optional, default `true` — the three-pass edit).
+
+Response: `edited_text` (the clean copy), `summary`, `changes` (each with excerpts, rationale, skill, and pass), `type`, `classification`, `skills_applied`.
+
+Auth: if `ANTHROPIC_API_KEY` is set in the environment when `serve.py` starts, requests go straight to the Claude API (structured outputs, fastest). Otherwise they run through the `claude` CLI on your Claude subscription. Expect a deep edit of a typical post to take a few minutes; callers should use generous HTTP timeouts. Text only — screenshots are a UI feature.
+
 ## Plug in your own skills
 
 Skills live in [skills/](skills/) as plain markdown. The current files are **placeholders** — replace their contents with your real skills:

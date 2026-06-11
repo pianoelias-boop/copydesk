@@ -61,13 +61,17 @@
     localStorage.setItem(BACKEND_STORAGE, 'api');
   }
 
-  function getApiKey() { return localStorage.getItem(KEY_STORAGE) || ''; }
+  // Key lives in localStorage (remembered) or sessionStorage (this tab only).
+  function getApiKey() {
+    return localStorage.getItem(KEY_STORAGE) || sessionStorage.getItem(KEY_STORAGE) || '';
+  }
   function getBackend() {
     return isLocalHost ? (localStorage.getItem(BACKEND_STORAGE) || 'api') : 'api';
   }
 
   els.settingsBtn.addEventListener('click', () => {
     els.apiKeyInput.value = getApiKey();
+    document.getElementById('remember-key').checked = !sessionStorage.getItem(KEY_STORAGE);
     const backend = getBackend();
     document.getElementById('backend-api').checked = backend === 'api';
     document.getElementById('backend-local').checked = backend === 'local';
@@ -76,7 +80,11 @@
 
   els.settingsDialog.addEventListener('close', () => {
     if (els.settingsDialog.returnValue === 'save') {
-      localStorage.setItem(KEY_STORAGE, els.apiKeyInput.value.trim());
+      const key = els.apiKeyInput.value.trim();
+      const remember = document.getElementById('remember-key').checked;
+      localStorage.removeItem(KEY_STORAGE);
+      sessionStorage.removeItem(KEY_STORAGE);
+      if (key) (remember ? localStorage : sessionStorage).setItem(KEY_STORAGE, key);
       const backend = document.getElementById('backend-local').checked ? 'local' : 'api';
       localStorage.setItem(BACKEND_STORAGE, backend);
     }
