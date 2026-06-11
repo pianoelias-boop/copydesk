@@ -53,8 +53,18 @@
   let currentImage = null; // {base64, mediaType, dataUrl, width, height}
 
   // ---------- settings ----------
+  // The Local Claude Code backend only exists when served by serve.py on
+  // this machine — hide it entirely on the deployed (static) site.
+  const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  if (!isLocalHost) {
+    document.getElementById('backend-local-row').classList.add('hidden');
+    localStorage.setItem(BACKEND_STORAGE, 'api');
+  }
+
   function getApiKey() { return localStorage.getItem(KEY_STORAGE) || ''; }
-  function getBackend() { return localStorage.getItem(BACKEND_STORAGE) || 'api'; }
+  function getBackend() {
+    return isLocalHost ? (localStorage.getItem(BACKEND_STORAGE) || 'api') : 'api';
+  }
 
   els.settingsBtn.addEventListener('click', () => {
     els.apiKeyInput.value = getApiKey();

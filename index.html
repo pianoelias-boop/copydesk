@@ -28,7 +28,7 @@
         <input type="radio" name="backend" id="backend-api" value="api" checked>
         <span><strong>Anthropic API key</strong> — calls the Claude API directly from your browser. Works everywhere, billed as API usage.</span>
       </label>
-      <label class="radio-row">
+      <label class="radio-row" id="backend-local-row">
         <input type="radio" name="backend" id="backend-local" value="local">
         <span><strong>Local Claude Code</strong> — routes through the <code>claude</code> CLI on this machine, billed to your Claude subscription. Only works when the app is running via <code>serve.py</code> (local testing).</span>
       </label>
