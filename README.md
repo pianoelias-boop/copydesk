@@ -1,11 +1,13 @@
 # Copydesk
 
-A web app that runs marketing copy through an AI editing pipeline built from your own editing skills. Paste a draft, and it:
+A web app that runs marketing copy through an AI editing pipeline built from your own editing skills. Paste a draft **or a screenshot** (of an email, a landing page, an ad…), and it:
 
-1. **Classifies** the kind of writing (landing page, email, blog post, social, ad copy, press release, case study)
+1. **Classifies** the kind of writing (landing page, email, blog post, social, ad copy, press release, case study) — and for screenshots, transcribes the copy
 2. **Routes** to the right skills — general ones (AI-language removal, copywriting fundamentals) always apply; type-specific skills apply only to matching writing
 3. **Edits** the draft with Claude, applying those skills
-4. **Shows the changes** — a word-level diff with insertions/deletions highlighted, plus a panel explaining why each change was made and which skill motivated it. Click a change card to jump to it in the diff.
+4. **Shows the changes** — a word-level diff with insertions/deletions highlighted, plus a panel explaining why each change was made and which skill motivated it. For screenshots, you also get the original image **annotated with numbered boxes** over each changed region; boxes and change cards cross-link. Click a change card to jump to it in the diff or image.
+
+Screenshots can be pasted (⌘V), dragged onto the page, or browsed for. When an image is provided, the text box becomes optional author notes (audience, goal, constraints). Images are downscaled in the browser to the model's 2576px vision maximum before upload, so the annotation coordinates returned by the model map exactly onto the displayed image.
 
 It's a static site — no backend, no build step. The app calls the Claude API directly from the browser with your own API key (stored only in your browser's localStorage).
 

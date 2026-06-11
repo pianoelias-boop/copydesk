@@ -2,6 +2,10 @@
  * Claude API layer — called directly from the browser with the user's own key.
  * Uses structured outputs (output_config.format) so responses are guaranteed
  * valid JSON matching our schemas.
+ *
+ * Inputs can be text, a screenshot, or both. For screenshots the classify
+ * call also transcribes the copy, and the edit call returns a pixel bounding
+ * box for each change so it can be drawn on the image.
  */
 const ClaudeAPI = (() => {
   const API_URL = 'https://api.anthropic.com/v1/messages';
@@ -25,34 +29,73 @@ const ClaudeAPI = (() => {
       if (body.error && body.error.message) message = body.error.message;
     } catch (_) { /* non-JSON error body */ }
     if (res.status === 401) message += '\nCheck your API key in Settings.';
+    if (res.status === 413) message += '\nThe screenshot is too large — try cropping it.';
     if (res.status === 429) message += '\nRate limited — wait a moment and try again.';
     throw new Error(message);
   }
 
-  const CLASSIFY_SCHEMA = {
-    type: 'object',
-    properties: {
+  function imageBlock(image) {
+    return {
+      type: 'image',
+      source: { type: 'base64', media_type: image.mediaType, data: image.base64 },
+    };
+  }
+
+  // ---------- classification (and transcription, for screenshots) ----------
+
+  function classifySchema(withTranscription) {
+    const properties = {
       document_type: { type: 'string', description: 'One of the provided type ids, or "other" if none fit' },
       confidence: { type: 'string', enum: ['high', 'medium', 'low'] },
       audience: { type: 'string', description: 'Who this piece is written for, in a short phrase' },
       notes: { type: 'string', description: 'One sentence on what signals drove the classification' },
-    },
-    required: ['document_type', 'confidence', 'audience', 'notes'],
-    additionalProperties: false,
-  };
+    };
+    if (withTranscription) {
+      properties.transcription = {
+        type: 'string',
+        description: 'Complete, faithful transcription of all the copy visible in the screenshot, in reading order, with line breaks preserving the visual structure. Do not correct, paraphrase, or omit anything.',
+      };
+    }
+    return {
+      type: 'object',
+      properties,
+      required: Object.keys(properties),
+      additionalProperties: false,
+    };
+  }
 
-  /** Classify the writing type. Small, fast, non-streaming call. */
-  async function classify(text, types, apiKey) {
+  /**
+   * Classify the writing type. For screenshots, also transcribe the copy.
+   * input: { text?: string, image?: {base64, mediaType} }
+   */
+  async function classify(input, types, apiKey) {
     const typeList = types.map(t => `- ${t.id}: ${t.description}`).join('\n');
+    const isImage = !!input.image;
+
+    let system = `You classify marketing copy by document type so it can be routed to the right editing skills.\n\nAvailable types:\n${typeList}\n\nIf the piece genuinely fits none of these, use "other". Classify based on structure, intent, and conventions — not just topic.`;
+    if (isImage) {
+      system += `\n\nThe draft is provided as a screenshot. Also transcribe every piece of copy in it, faithfully and completely — the transcription becomes the working text for editing, so accuracy matters more than tidiness.`;
+    }
+
+    const content = [];
+    if (isImage) {
+      content.push(imageBlock(input.image));
+      let prompt = 'Classify the writing in this screenshot and transcribe its copy.';
+      if (input.text) prompt += `\n\nNotes from the author:\n${input.text}`;
+      content.push({ type: 'text', text: prompt });
+    } else {
+      content.push({ type: 'text', text: `Classify this piece of writing:\n\n<draft>\n${input.text}\n</draft>` });
+    }
+
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: headers(apiKey),
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 2000,
-        system: `You classify marketing copy by document type so it can be routed to the right editing skills.\n\nAvailable types:\n${typeList}\n\nIf the piece genuinely fits none of these, use "other". Classify based on structure, intent, and conventions — not just topic.`,
-        messages: [{ role: 'user', content: `Classify this piece of writing:\n\n<draft>\n${text}\n</draft>` }],
-        output_config: { format: { type: 'json_schema', schema: CLASSIFY_SCHEMA } },
+        max_tokens: isImage ? 8000 : 2000,
+        system,
+        messages: [{ role: 'user', content }],
+        output_config: { format: { type: 'json_schema', schema: classifySchema(isImage) } },
       }),
     });
     if (!res.ok) await throwApiError(res);
@@ -62,37 +105,61 @@ const ClaudeAPI = (() => {
     return JSON.parse(textBlock.text);
   }
 
-  const EDIT_SCHEMA = {
-    type: 'object',
-    properties: {
-      edited_text: { type: 'string', description: 'The complete edited piece, in full. Preserve the original formatting conventions (markdown, line breaks, etc.).' },
-      summary: { type: 'string', description: 'Two or three sentences summarizing the overall editorial direction of the changes.' },
-      changes: {
-        type: 'array',
-        description: 'Every meaningful change made, in document order.',
-        items: {
-          type: 'object',
-          properties: {
-            original_excerpt: { type: 'string', description: 'Short verbatim excerpt of the original text that was changed' },
-            revised_excerpt: { type: 'string', description: 'Short verbatim excerpt of the replacement text (empty string if deleted)' },
-            rationale: { type: 'string', description: 'Why this change improves the writing, in one or two sentences' },
-            skill: { type: 'string', description: 'The id of the editing skill that motivated this change' },
+  // ---------- editing ----------
+
+  function editSchema(withRegions) {
+    const changeProperties = {
+      original_excerpt: { type: 'string', description: 'Short verbatim excerpt of the original text that was changed' },
+      revised_excerpt: { type: 'string', description: 'Short verbatim excerpt of the replacement text (empty string if deleted)' },
+      rationale: { type: 'string', description: 'Why this change improves the writing, in one or two sentences' },
+      skill: { type: 'string', description: 'The id of the editing skill that motivated this change' },
+    };
+    if (withRegions) {
+      changeProperties.region = {
+        description: 'Pixel bounding box of where the ORIGINAL text sits in the screenshot, origin at the top-left corner. null if the location cannot be determined.',
+        anyOf: [
+          {
+            type: 'object',
+            properties: {
+              x: { type: 'integer' },
+              y: { type: 'integer' },
+              width: { type: 'integer' },
+              height: { type: 'integer' },
+            },
+            required: ['x', 'y', 'width', 'height'],
+            additionalProperties: false,
           },
-          required: ['original_excerpt', 'revised_excerpt', 'rationale', 'skill'],
-          additionalProperties: false,
+          { type: 'null' },
+        ],
+      };
+    }
+    return {
+      type: 'object',
+      properties: {
+        edited_text: { type: 'string', description: 'The complete edited piece, in full. Preserve the original formatting conventions (markdown, line breaks, etc.).' },
+        summary: { type: 'string', description: 'Two or three sentences summarizing the overall editorial direction of the changes.' },
+        changes: {
+          type: 'array',
+          description: 'Every meaningful change made, in document order.',
+          items: {
+            type: 'object',
+            properties: changeProperties,
+            required: Object.keys(changeProperties),
+            additionalProperties: false,
+          },
         },
       },
-    },
-    required: ['edited_text', 'summary', 'changes'],
-    additionalProperties: false,
-  };
+      required: ['edited_text', 'summary', 'changes'],
+      additionalProperties: false,
+    };
+  }
 
-  function buildEditSystemPrompt(typeLabel, skills) {
+  function buildEditSystemPrompt(typeLabel, skills, image) {
     const skillBlocks = skills.map(s =>
       `<skill id="${s.id}" name="${s.label}">\n${s.content}\n</skill>`
     ).join('\n\n');
 
-    return `You are a senior marketing copy editor. You are editing a piece classified as: ${typeLabel}.
+    let prompt = `You are a senior marketing copy editor. You are editing a piece classified as: ${typeLabel}.
 
 Apply the editing skills below. Each skill is a set of editorial rules; when you make a change, attribute it to the skill that motivated it (use the skill's id).
 
@@ -104,13 +171,31 @@ Editing principles:
 - Make every change for a reason you can articulate. If a sentence is already good, leave it alone.
 - Record every meaningful change in the changes array with a short verbatim excerpt of the original, the revision, and the rationale. Group word-level tweaks within one sentence into a single change entry.
 - The edited_text field must contain the COMPLETE edited piece from first word to last — never truncate or summarize it.`;
+
+    if (image) {
+      prompt += `
+
+The draft was provided as a screenshot (${image.width}×${image.height} pixels), and a transcription of its copy is included. Edit the transcription. For each change, also report region: the pixel bounding box of where the ORIGINAL text appears in the screenshot, with the origin at the image's top-left corner. Make boxes tight around the relevant text. If you cannot locate a change in the image, set region to null.`;
+    }
+    return prompt;
   }
 
   /**
    * Run the editing pass with streaming (long outputs), returning parsed JSON.
+   * input: { text: string (the working text), image?: {base64, mediaType, width, height}, notes?: string }
    * onProgress receives the running count of characters received.
    */
-  async function edit(text, typeLabel, skills, apiKey, onProgress) {
+  async function edit(input, typeLabel, skills, apiKey, onProgress) {
+    const content = [];
+    if (input.image) {
+      content.push(imageBlock(input.image));
+      let prompt = `Edit the copy in this screenshot. Transcription of the copy:\n\n<draft>\n${input.text}\n</draft>`;
+      if (input.notes) prompt += `\n\nNotes from the author:\n${input.notes}`;
+      content.push({ type: 'text', text: prompt });
+    } else {
+      content.push({ type: 'text', text: `Edit this draft:\n\n<draft>\n${input.text}\n</draft>` });
+    }
+
     const res = await fetch(API_URL, {
       method: 'POST',
       headers: headers(apiKey),
@@ -119,9 +204,9 @@ Editing principles:
         max_tokens: 64000,
         stream: true,
         thinking: { type: 'adaptive' },
-        system: buildEditSystemPrompt(typeLabel, skills),
-        messages: [{ role: 'user', content: `Edit this draft:\n\n<draft>\n${text}\n</draft>` }],
-        output_config: { format: { type: 'json_schema', schema: EDIT_SCHEMA } },
+        system: buildEditSystemPrompt(typeLabel, skills, input.image),
+        messages: [{ role: 'user', content }],
+        output_config: { format: { type: 'json_schema', schema: editSchema(!!input.image) } },
       }),
     });
     if (!res.ok) await throwApiError(res);

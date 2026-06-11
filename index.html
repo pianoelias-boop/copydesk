@@ -43,6 +43,20 @@
           </select>
         </div>
       </div>
+      <div id="image-row">
+        <div id="image-preview" class="image-preview hidden">
+          <img id="image-thumb" alt="Screenshot to edit">
+          <div class="image-preview-meta">
+            <span id="image-info" class="muted"></span>
+            <button id="remove-image" class="ghost-btn">Remove</button>
+          </div>
+        </div>
+        <p id="image-hint" class="muted image-hint">
+          Working from a screenshot? Paste it here (⌘V), drop it on the page, or
+          <button id="browse-btn" class="link-btn">browse for an image</button>.
+          <input type="file" id="file-input" accept="image/png,image/jpeg,image/webp,image/gif" hidden>
+        </p>
+      </div>
       <textarea id="draft-input" placeholder="Paste your draft here — a landing page, email, blog post, social post, ad copy, or press release…" spellcheck="false"></textarea>
       <div class="run-row">
         <span id="word-count" class="muted"></span>
@@ -80,9 +94,16 @@
           <div class="panel-head">
             <h2>Edited draft</h2>
             <div class="view-toggle">
+              <button id="view-screenshot" class="toggle-btn hidden">Screenshot</button>
               <button id="view-diff" class="toggle-btn active">Changes</button>
               <button id="view-clean" class="toggle-btn">Clean</button>
               <button id="copy-btn" class="ghost-btn">Copy edited text</button>
+            </div>
+          </div>
+          <div id="screenshot-output" class="screenshot-output hidden">
+            <div id="screenshot-wrap" class="screenshot-wrap">
+              <img id="screenshot-img" alt="Annotated screenshot">
+              <div id="annotation-layer" class="annotation-layer"></div>
             </div>
           </div>
           <div id="diff-output" class="diff-output"></div>

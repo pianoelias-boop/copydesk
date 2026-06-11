@@ -6,7 +6,6 @@
     settingsBtn: $('settings-btn'),
     settingsDialog: $('settings-dialog'),
     apiKeyInput: $('api-key-input'),
-    saveSettings: $('save-settings'),
     typeSelect: $('type-select'),
     draftInput: $('draft-input'),
     wordCount: $('word-count'),
@@ -23,13 +22,28 @@
     cleanOutput: $('clean-output'),
     changesList: $('changes-list'),
     changeCount: $('change-count'),
+    viewScreenshot: $('view-screenshot'),
     viewDiff: $('view-diff'),
     viewClean: $('view-clean'),
     copyBtn: $('copy-btn'),
+    imagePreview: $('image-preview'),
+    imageThumb: $('image-thumb'),
+    imageInfo: $('image-info'),
+    removeImage: $('remove-image'),
+    browseBtn: $('browse-btn'),
+    fileInput: $('file-input'),
+    screenshotOutput: $('screenshot-output'),
+    screenshotImg: $('screenshot-img'),
+    annotationLayer: $('annotation-layer'),
   };
 
   const KEY_STORAGE = 'copydesk-api-key';
+  // Opus high-res vision maximum — coordinates map 1:1 to pixels at or below
+  // this size, so we downscale client-side and annotate the same image we send.
+  const MAX_IMAGE_EDGE = 2576;
+
   let lastEditedText = '';
+  let currentImage = null; // {base64, mediaType, dataUrl, width, height}
 
   // ---------- settings ----------
   function getApiKey() { return localStorage.getItem(KEY_STORAGE) || ''; }
@@ -43,6 +57,91 @@
     if (els.settingsDialog.returnValue === 'save') {
       localStorage.setItem(KEY_STORAGE, els.apiKeyInput.value.trim());
     }
+  });
+
+  // ---------- image input ----------
+
+  /** Downscale to MAX_IMAGE_EDGE and re-encode as JPEG (keeps base64 small). */
+  async function prepareImage(fileOrBlob) {
+    const bitmap = await createImageBitmap(fileOrBlob);
+    const scale = Math.min(1, MAX_IMAGE_EDGE / Math.max(bitmap.width, bitmap.height));
+    const width = Math.round(bitmap.width * scale);
+    const height = Math.round(bitmap.height * scale);
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff'; // flatten transparency
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+    return {
+      dataUrl,
+      base64: dataUrl.split(',')[1],
+      mediaType: 'image/jpeg',
+      width,
+      height,
+    };
+  }
+
+  async function setImage(fileOrBlob) {
+    try {
+      currentImage = await prepareImage(fileOrBlob);
+    } catch (err) {
+      showError('Could not read that image: ' + err.message);
+      return;
+    }
+    els.imageThumb.src = currentImage.dataUrl;
+    els.imageInfo.textContent = `Screenshot · ${currentImage.width}×${currentImage.height}px — the pipeline will transcribe, edit, and annotate it. Use the text box below for optional notes.`;
+    els.imagePreview.classList.remove('hidden');
+    els.draftInput.placeholder = 'Optional notes for the editor — audience, goal, constraints…';
+  }
+
+  function clearImage() {
+    currentImage = null;
+    els.imagePreview.classList.add('hidden');
+    els.imageThumb.src = '';
+    els.draftInput.placeholder = 'Paste your draft here — a landing page, email, blog post, social post, ad copy, or press release…';
+  }
+
+  els.removeImage.addEventListener('click', clearImage);
+  els.browseBtn.addEventListener('click', () => els.fileInput.click());
+  els.fileInput.addEventListener('change', () => {
+    if (els.fileInput.files[0]) setImage(els.fileInput.files[0]);
+    els.fileInput.value = '';
+  });
+
+  // Paste a screenshot anywhere on the page.
+  document.addEventListener('paste', e => {
+    const items = e.clipboardData && e.clipboardData.items;
+    if (!items) return;
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        setImage(item.getAsFile());
+        return;
+      }
+    }
+  });
+
+  // Drag and drop anywhere on the page.
+  let dragDepth = 0;
+  document.addEventListener('dragenter', e => {
+    if (e.dataTransfer && [...e.dataTransfer.types].includes('Files')) {
+      dragDepth++;
+      document.body.classList.add('drop-active');
+    }
+  });
+  document.addEventListener('dragleave', () => {
+    if (--dragDepth <= 0) { dragDepth = 0; document.body.classList.remove('drop-active'); }
+  });
+  document.addEventListener('dragover', e => e.preventDefault());
+  document.addEventListener('drop', e => {
+    e.preventDefault();
+    dragDepth = 0;
+    document.body.classList.remove('drop-active');
+    const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+    if (file && file.type.startsWith('image/')) setImage(file);
   });
 
   // ---------- input helpers ----------
@@ -81,7 +180,7 @@
     els.resultsSection.classList.add('hidden');
 
     const text = els.draftInput.value.trim();
-    if (!text) { showError('Paste a draft first.'); return; }
+    if (!text && !currentImage) { showError('Paste a draft or a screenshot first.'); return; }
 
     const apiKey = getApiKey();
     if (!apiKey) {
@@ -92,15 +191,29 @@
     els.runBtn.disabled = true;
     try {
       const types = await Skills.getTypes();
+      const isImage = !!currentImage;
+      const image = currentImage; // snapshot, in case the user clears it mid-run
 
-      // 1. Classify (or use the manual override).
-      let typeId, typeLabel, classification = null;
-      if (els.typeSelect.value !== 'auto') {
+      // 1. Classify (and transcribe, for screenshots) — or use the manual override.
+      //    With a manual type + screenshot we still need the transcription, so
+      //    the classify call runs whenever there's an image.
+      let typeId, typeLabel, classification = null, workingText = text;
+      const manualType = els.typeSelect.value !== 'auto';
+
+      if (isImage) {
+        setStatus('Reading the screenshot…');
+        classification = await ClaudeAPI.classify({ text, image }, types, apiKey);
+        workingText = classification.transcription;
+        if (!workingText || !workingText.trim()) throw new Error('No copy could be read from the screenshot.');
+      } else if (!manualType) {
+        setStatus('Identifying the kind of writing…');
+        classification = await ClaudeAPI.classify({ text }, types, apiKey);
+      }
+
+      if (manualType) {
         typeId = els.typeSelect.value;
         typeLabel = types.find(t => t.id === typeId).label;
       } else {
-        setStatus('Identifying the kind of writing…');
-        classification = await ClaudeAPI.classify(text, types, apiKey);
         typeId = classification.document_type;
         const match = types.find(t => t.id === typeId);
         typeLabel = match ? match.label : 'General marketing copy';
@@ -110,15 +223,18 @@
       // 2. Route to applicable skills.
       const skills = await Skills.skillsForType(typeId);
 
-      // 3. Edit.
+      // 3. Edit (with the screenshot attached, so changes come back with regions).
       setStatus(`Editing as ${typeLabel.toLowerCase()} with ${skills.length} skill${skills.length === 1 ? '' : 's'}…`);
-      const result = await ClaudeAPI.edit(text, typeLabel, skills, apiKey, chars => {
+      const editInput = isImage
+        ? { text: workingText, image, notes: text || null }
+        : { text: workingText };
+      const result = await ClaudeAPI.edit(editInput, typeLabel, skills, apiKey, chars => {
         setStatus(`Editing as ${typeLabel.toLowerCase()}… (${Math.round(chars / 1000)}k characters received)`);
       });
 
       // 4. Render.
       clearStatus();
-      render(text, result, { typeLabel, classification, skills });
+      render(workingText, result, { typeLabel, classification: manualType ? null : classification, skills, image });
     } catch (err) {
       clearStatus();
       showError(err.message);
@@ -140,6 +256,7 @@
       badgeText += ' · manually selected';
       els.classificationBadge.title = '';
     }
+    if (meta.image) badgeText += ' · from screenshot';
     els.classificationBadge.textContent = badgeText;
     els.skillsUsed.textContent = 'Skills applied: ' + meta.skills.map(s => s.label).join(', ');
 
@@ -162,20 +279,66 @@
     // Clean view.
     els.cleanOutput.textContent = result.edited_text;
 
+    // Annotated screenshot view.
+    if (meta.image) {
+      renderAnnotations(meta.image, result.changes);
+      els.viewScreenshot.classList.remove('hidden');
+      showScreenshotView();
+    } else {
+      els.viewScreenshot.classList.add('hidden');
+      showDiffView();
+    }
+
     // Changes panel.
     els.changesList.textContent = '';
     els.changeCount.textContent = `${result.changes.length} change${result.changes.length === 1 ? '' : 's'}`;
-    for (const change of result.changes) {
-      els.changesList.appendChild(renderChangeCard(change, meta.skills));
-    }
+    result.changes.forEach((change, i) => {
+      els.changesList.appendChild(renderChangeCard(change, i, meta.skills, !!meta.image));
+    });
 
     els.resultsSection.classList.remove('hidden');
     els.resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
 
-  function renderChangeCard(change, skills) {
+  function renderAnnotations(image, changes) {
+    els.screenshotImg.src = image.dataUrl;
+    els.annotationLayer.textContent = '';
+    changes.forEach((change, i) => {
+      const r = change.region;
+      if (!r || !r.width || !r.height) return;
+      const box = document.createElement('div');
+      box.className = 'anno-box';
+      box.dataset.index = i;
+      // Percentage positioning so boxes track the responsively-sized image.
+      box.style.left = (r.x / image.width * 100) + '%';
+      box.style.top = (r.y / image.height * 100) + '%';
+      box.style.width = (r.width / image.width * 100) + '%';
+      box.style.height = (r.height / image.height * 100) + '%';
+      box.title = change.rationale;
+
+      const num = document.createElement('span');
+      num.className = 'anno-num';
+      num.textContent = i + 1;
+      box.appendChild(num);
+
+      box.addEventListener('click', () => {
+        const card = els.changesList.children[i];
+        if (!card) return;
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        flash(card);
+      });
+      els.annotationLayer.appendChild(box);
+    });
+  }
+
+  function renderChangeCard(change, index, skills, hasImage) {
     const card = document.createElement('div');
     card.className = 'change-card';
+
+    const num = document.createElement('span');
+    num.className = 'change-num';
+    num.textContent = index + 1;
+    card.appendChild(num);
 
     const skill = skills.find(s => s.id === change.skill);
     const tag = document.createElement('span');
@@ -201,8 +364,26 @@
     reason.textContent = change.rationale;
     card.appendChild(reason);
 
-    card.addEventListener('click', () => highlightChangeInDiff(change));
+    card.addEventListener('click', () => {
+      // Flash in whichever view is showing; prefer the screenshot region when
+      // it's visible and this change has one.
+      const screenshotVisible = !els.screenshotOutput.classList.contains('hidden');
+      if (screenshotVisible && hasImage) {
+        const box = els.annotationLayer.querySelector(`.anno-box[data-index="${index}"]`);
+        if (box) {
+          box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          flash(box);
+          return;
+        }
+      }
+      highlightChangeInDiff(change);
+    });
     return card;
+  }
+
+  function flash(el) {
+    el.classList.add('flash');
+    setTimeout(() => el.classList.remove('flash'), 1600);
   }
 
   /** Scroll the diff to the segment that best matches this change and flash it. */
@@ -219,8 +400,7 @@
         const segText = norm(el.textContent);
         if (text.includes(segText) || segText.includes(text)) {
           el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-          el.classList.add('flash');
-          setTimeout(() => el.classList.remove('flash'), 1600);
+          flash(el);
           return;
         }
       }
@@ -228,18 +408,19 @@
   }
 
   // ---------- view toggles ----------
-  function showDiffView() {
-    els.diffOutput.classList.remove('hidden');
-    els.cleanOutput.classList.add('hidden');
-    els.viewDiff.classList.add('active');
-    els.viewClean.classList.remove('active');
+  function setView(view) {
+    els.screenshotOutput.classList.toggle('hidden', view !== 'screenshot');
+    els.diffOutput.classList.toggle('hidden', view !== 'diff');
+    els.cleanOutput.classList.toggle('hidden', view !== 'clean');
+    els.viewScreenshot.classList.toggle('active', view === 'screenshot');
+    els.viewDiff.classList.toggle('active', view === 'diff');
+    els.viewClean.classList.toggle('active', view === 'clean');
   }
-  function showCleanView() {
-    els.diffOutput.classList.add('hidden');
-    els.cleanOutput.classList.remove('hidden');
-    els.viewDiff.classList.remove('active');
-    els.viewClean.classList.add('active');
-  }
+  const showDiffView = () => setView('diff');
+  const showCleanView = () => setView('clean');
+  const showScreenshotView = () => setView('screenshot');
+
+  els.viewScreenshot.addEventListener('click', showScreenshotView);
   els.viewDiff.addEventListener('click', showDiffView);
   els.viewClean.addEventListener('click', showCleanView);
 

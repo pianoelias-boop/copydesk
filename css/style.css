@@ -145,17 +145,22 @@ select {
 
 .ghost-btn:hover { border-color: var(--accent); color: var(--accent); }
 
+.view-toggle { display: flex; align-items: center; }
+
 .toggle-btn {
   background: transparent;
   border: 1px solid var(--line);
-  border-radius: 8px 0 0 8px;
+  border-radius: 0;
   padding: 7px 14px;
   font-size: 13px;
   color: var(--ink-soft);
   cursor: pointer;
 }
 
-.toggle-btn + .toggle-btn { border-radius: 0 8px 8px 0; border-left: none; margin-right: 10px; }
+.toggle-btn + .toggle-btn { border-left: none; }
+.view-toggle .toggle-btn:not(.hidden):first-of-type,
+.view-toggle .toggle-btn.hidden + .toggle-btn { border-radius: 8px 0 0 8px; border-left: 1px solid var(--line); }
+.view-toggle .toggle-btn:last-of-type { border-radius: 0 8px 8px 0; margin-right: 10px; }
 
 .toggle-btn.active {
   background: var(--accent-soft);
@@ -332,6 +337,117 @@ dialog::backdrop { background: rgba(40, 32, 18, 0.35); }
 .hint a { color: var(--accent); }
 
 .dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
+
+/* ---------- image input ---------- */
+.image-hint { margin: 0 0 10px; }
+
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: var(--accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.image-preview {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  margin-bottom: 12px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.image-preview img {
+  max-height: 120px;
+  max-width: 220px;
+  border-radius: 4px;
+  border: 1px solid var(--line);
+}
+
+.image-preview-meta { display: flex; flex-direction: column; gap: 8px; align-items: flex-start; }
+
+body.drop-active::after {
+  content: 'Drop the screenshot to edit it';
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--serif);
+  font-size: 26px;
+  color: var(--accent);
+  background: rgba(250, 247, 240, 0.92);
+  border: 3px dashed var(--accent);
+  z-index: 100;
+  pointer-events: none;
+}
+
+/* ---------- annotated screenshot ---------- */
+.screenshot-output { overflow: auto; }
+
+.screenshot-wrap { position: relative; display: inline-block; max-width: 100%; }
+
+.screenshot-wrap img {
+  display: block;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.annotation-layer { position: absolute; inset: 0; }
+
+.anno-box {
+  position: absolute;
+  border: 2px solid var(--accent);
+  border-radius: 4px;
+  background: rgba(180, 84, 10, 0.10);
+  cursor: pointer;
+}
+
+.anno-box:hover, .anno-box.flash { background: rgba(180, 84, 10, 0.25); box-shadow: 0 0 0 3px rgba(180, 84, 10, 0.35); }
+
+.anno-num {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  min-width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0 4px;
+}
+
+.change-card { position: relative; }
+
+.change-card .change-num {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  min-width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 999px;
+  padding: 0 4px;
+}
+
+.change-card.flash { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(180, 84, 10, 0.3); }
 
 footer { max-width: 1180px; margin: 0 auto; padding: 0 24px 30px; }
 
