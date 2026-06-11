@@ -561,7 +561,7 @@ dialog::backdrop { background: rgba(0, 0, 45, 0.4); }
 
 .settings-form > label[for="api-key-input"] { margin-top: 14px; }
 
-.settings-form input {
+#api-key-input {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -571,7 +571,9 @@ dialog::backdrop { background: rgba(0, 0, 45, 0.4); }
   color: var(--ink);
 }
 
-.settings-form input:focus { outline: none; border-color: var(--ac-blue); box-shadow: 0 0 0 3px rgba(0, 76, 255, 0.18); }
+#api-key-input:focus { outline: none; border-color: var(--ac-blue); box-shadow: 0 0 0 3px rgba(0, 76, 255, 0.18); }
+
+.radio-row input[type="radio"] { width: 15px; height: 15px; }
 
 .hint { font-size: 12.5px; color: var(--ink-soft); }
 .hint a { color: var(--ac-blue); }
