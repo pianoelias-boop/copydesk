@@ -1,11 +1,13 @@
 {
   "types": [
-    { "id": "landing-page", "label": "Landing / sales page", "description": "Web page copy built around a single conversion goal: headline, subhead, benefit sections, social proof, CTA — includes long-form sales pages" },
+    { "id": "landing-page", "label": "Landing / campaign page", "description": "Standalone web page built around a single conversion goal — campaign landing pages, long-form sales pages: headline, subhead, benefits, social proof, one CTA" },
+    { "id": "feature-page", "label": "Feature / solution page", "description": "SaaS website page explaining a product capability, solution, use case, or industry fit — lives in the main site navigation, educates while persuading, supports multiple visitor intents" },
     { "id": "email", "label": "Marketing email", "description": "Email to a list or segment: subject-line-driven, scannable, single primary CTA (newsletters, promos, nurture sequences)" },
     { "id": "blog-post", "label": "Blog post / article", "description": "Long-form editorial or thought-leadership content meant to inform, rank, or build authority" },
     { "id": "social-post", "label": "Social media post", "description": "Short-form organic post for LinkedIn, X, Instagram, etc. — hook-first, platform-native, conversational" },
     { "id": "ad-copy", "label": "Ad copy", "description": "Paid placement copy with hard length limits: search ads (Google/Bing) or social ads (Meta, LinkedIn, TikTok) — headline + description variants" },
-    { "id": "short-form-video", "label": "Short-form video script", "description": "Script for TikTok, Reels, or Shorts — spoken-word copy, hook in the first seconds, written to be heard not read" },
+    { "id": "short-form-video", "label": "Short-form video script", "description": "Script for TikTok, Reels, or Shorts (under ~90 seconds) — spoken-word copy, hook in the first seconds, written to be heard not read" },
+    { "id": "long-form-video", "label": "Long-form video script (YouTube)", "description": "Script or outline for a YouTube video of roughly 5–20 minutes — product walkthroughs, thought leadership, customer stories; written to be spoken, with hook, structure, and retention beats" },
     { "id": "press-release", "label": "Press release", "description": "Announcement in journalistic format: dateline, inverted pyramid, quotes, boilerplate" },
     { "id": "case-study", "label": "Case study", "description": "Customer story with problem → solution → results structure, usually with metrics" },
     { "id": "other", "label": "General marketing copy", "description": "Marketing writing that doesn't fit the other categories" }
@@ -28,7 +30,11 @@
     { "id": "social-posts-craft", "label": "Social posts craft", "file": "skills/copywriting/references/formats/social-posts.md", "appliesTo": ["social-post"] },
     { "id": "short-form-video-craft", "label": "Short-form video craft", "file": "skills/copywriting/references/formats/short-form-video.md", "appliesTo": ["short-form-video"] },
     { "id": "blog-post", "label": "Article craft", "file": "skills/types/blog-post.md", "appliesTo": ["blog-post"] },
-    { "id": "press-release", "label": "Press release craft", "file": "skills/types/press-release.md", "appliesTo": ["press-release"] },
+    { "id": "press-release-writing", "label": "Press release writing", "file": "skills/press-release-writing/SKILL.md", "appliesTo": ["press-release"] },
+    { "id": "long-form-video-script", "label": "Long-form video script", "file": "skills/long-form-video-script/SKILL.md", "appliesTo": ["long-form-video"] },
+    { "id": "saas-web-pages", "label": "SaaS web page best practices", "file": "skills/saas-web-page-best-practices/SKILL.md", "appliesTo": ["landing-page", "feature-page"] },
+    { "id": "saas-feature-solution-pages", "label": "Feature & solution pages", "file": "skills/saas-web-page-best-practices/references/feature-solution-pages.md", "appliesTo": ["feature-page"] },
+    { "id": "saas-landing-campaign-pages", "label": "Landing & campaign pages", "file": "skills/saas-web-page-best-practices/references/landing-campaign-pages.md", "appliesTo": ["landing-page"] },
     { "id": "case-study", "label": "Case study craft", "file": "skills/types/case-study.md", "appliesTo": ["case-study"] }
   ]
 }
