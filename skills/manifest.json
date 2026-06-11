@@ -13,6 +13,8 @@
   "skills": [
     { "id": "avoid-ai-writing", "label": "Avoid AI writing", "file": "skills/avoid-ai-writing/SKILL.md", "appliesTo": "all" },
     { "id": "vocabulary-blacklist", "label": "Vocabulary blacklist", "file": "skills/avoid-ai-writing/references/vocabulary-blacklist.md", "appliesTo": "all" },
+    { "id": "human-writing", "label": "Human writing", "file": "skills/human-writing/SKILL.md", "appliesTo": "all" },
+    { "id": "internet-writing-style-guide", "label": "Internet writing style guide", "file": "skills/internet-writing-style-guide/SKILL.md", "appliesTo": ["blog-post", "case-study"] },
     { "id": "copywriting-core", "label": "Copywriting core", "file": "skills/copywriting/core.md", "appliesTo": "all" },
     { "id": "copywriting-principles", "label": "Core principles", "file": "skills/copywriting/references/principles.md", "appliesTo": "all" },
     { "id": "copywriting-wording", "label": "Wording", "file": "skills/copywriting/references/wording.md", "appliesTo": "all" },
