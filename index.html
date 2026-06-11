@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Copydesk — AI Editing Pipeline</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <h1>Copydesk</h1>
+      <span class="tagline">marketing copy, edited like an editor would</span>
+    </div>
+    <button id="settings-btn" class="ghost-btn" title="API key settings">⚙ Settings</button>
+  </header>
+
+  <!-- Settings panel -->
+  <dialog id="settings-dialog">
+    <form method="dialog" class="settings-form">
+      <h2>Settings</h2>
+      <label for="api-key-input">Anthropic API key</label>
+      <input type="password" id="api-key-input" placeholder="sk-ant-…" autocomplete="off">
+      <p class="hint">Stored only in this browser (localStorage). The app calls the Claude API
+        directly from your browser — your text and key never touch any other server.
+        Get a key at <a href="https://platform.claude.com" target="_blank" rel="noopener">platform.claude.com</a>.</p>
+      <div class="dialog-actions">
+        <button value="cancel" class="ghost-btn">Cancel</button>
+        <button value="save" id="save-settings" class="primary-btn">Save</button>
+      </div>
+    </form>
+  </dialog>
+
+  <main>
+    <!-- Input stage -->
+    <section id="input-section" class="panel">
+      <div class="panel-head">
+        <h2>Your draft</h2>
+        <div class="controls">
+          <label for="type-select" class="inline-label">Writing type</label>
+          <select id="type-select">
+            <option value="auto" selected>Detect automatically</option>
+          </select>
+        </div>
+      </div>
+      <textarea id="draft-input" placeholder="Paste your draft here — a landing page, email, blog post, social post, ad copy, or press release…" spellcheck="false"></textarea>
+      <div class="run-row">
+        <span id="word-count" class="muted"></span>
+        <button id="run-btn" class="primary-btn">Run editing pipeline</button>
+      </div>
+    </section>
+
+    <!-- Status -->
+    <section id="status-section" class="hidden">
+      <div class="status-line">
+        <span class="spinner"></span>
+        <span id="status-text">Working…</span>
+      </div>
+    </section>
+
+    <!-- Error -->
+    <section id="error-section" class="hidden">
+      <div class="error-box">
+        <strong>Something went wrong.</strong>
+        <p id="error-text"></p>
+      </div>
+    </section>
+
+    <!-- Results -->
+    <section id="results-section" class="hidden">
+      <div class="result-meta">
+        <div id="classification-badge" class="badge"></div>
+        <div id="skills-used" class="muted"></div>
+      </div>
+
+      <div id="edit-summary" class="summary-box"></div>
+
+      <div class="results-grid">
+        <div class="panel diff-panel">
+          <div class="panel-head">
+            <h2>Edited draft</h2>
+            <div class="view-toggle">
+              <button id="view-diff" class="toggle-btn active">Changes</button>
+              <button id="view-clean" class="toggle-btn">Clean</button>
+              <button id="copy-btn" class="ghost-btn">Copy edited text</button>
+            </div>
+          </div>
+          <div id="diff-output" class="diff-output"></div>
+          <div id="clean-output" class="diff-output hidden"></div>
+        </div>
+
+        <aside class="panel changes-panel">
+          <div class="panel-head">
+            <h2>Why it changed</h2>
+            <span id="change-count" class="muted"></span>
+          </div>
+          <div id="changes-list" class="changes-list"></div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p class="muted">Skills live in <code>skills/</code> — edit the markdown files to teach the pipeline your own editing rules.</p>
+  </footer>
+
+  <script src="js/diff.js"></script>
+  <script src="js/skills.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

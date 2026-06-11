@@ -1,0 +1,23 @@
+{
+  "types": [
+    { "id": "landing-page", "label": "Landing page", "description": "Web page copy built around a single conversion goal: headline, subhead, benefit sections, social proof, CTA" },
+    { "id": "email", "label": "Marketing email", "description": "Email to a list or segment: subject-line-driven, scannable, single primary CTA (newsletters, promos, nurture sequences)" },
+    { "id": "blog-post", "label": "Blog post / article", "description": "Long-form editorial or thought-leadership content meant to inform, rank, or build authority" },
+    { "id": "social-post", "label": "Social media post", "description": "Short-form post for LinkedIn, X, Instagram, etc. — hook-first, platform-native, conversational" },
+    { "id": "ad-copy", "label": "Ad copy", "description": "Paid placement copy with hard length limits: search ads, social ads, display — headline + description variants" },
+    { "id": "press-release", "label": "Press release", "description": "Announcement in journalistic format: dateline, inverted pyramid, quotes, boilerplate" },
+    { "id": "case-study", "label": "Case study", "description": "Customer story with problem → solution → results structure, usually with metrics" },
+    { "id": "other", "label": "General marketing copy", "description": "Marketing writing that doesn't fit the other categories" }
+  ],
+  "skills": [
+    { "id": "remove-ai-language", "label": "Remove AI language", "file": "skills/general/remove-ai-language.md", "appliesTo": "all" },
+    { "id": "copywriting-fundamentals", "label": "Copywriting fundamentals", "file": "skills/general/copywriting-fundamentals.md", "appliesTo": "all" },
+    { "id": "landing-page", "label": "Landing page craft", "file": "skills/types/landing-page.md", "appliesTo": ["landing-page"] },
+    { "id": "email", "label": "Email craft", "file": "skills/types/email.md", "appliesTo": ["email"] },
+    { "id": "blog-post", "label": "Article craft", "file": "skills/types/blog-post.md", "appliesTo": ["blog-post"] },
+    { "id": "social-post", "label": "Social craft", "file": "skills/types/social-post.md", "appliesTo": ["social-post"] },
+    { "id": "ad-copy", "label": "Ad craft", "file": "skills/types/ad-copy.md", "appliesTo": ["ad-copy"] },
+    { "id": "press-release", "label": "Press release craft", "file": "skills/types/press-release.md", "appliesTo": ["press-release"] },
+    { "id": "case-study", "label": "Case study craft", "file": "skills/types/case-study.md", "appliesTo": ["case-study"] }
+  ]
+}
