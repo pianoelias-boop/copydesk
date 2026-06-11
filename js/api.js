@@ -41,6 +41,50 @@ const ClaudeAPI = (() => {
     };
   }
 
+  // ---------- local Claude Code backend (subscription, via serve.py) ----------
+
+  function backend() { return localStorage.getItem('copydesk-backend') || 'api'; }
+
+  /** Tolerant JSON extraction — the CLI path has no schema enforcement. */
+  function extractJson(text) {
+    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const candidate = (fenced ? fenced[1] : text).trim();
+    const start = candidate.indexOf('{');
+    const end = candidate.lastIndexOf('}');
+    if (start === -1 || end <= start) throw new Error('The local Claude Code run returned no JSON. Try again, or switch to the API backend in Settings.');
+    return JSON.parse(candidate.slice(start, end + 1));
+  }
+
+  /**
+   * Run a prompt through the local serve.py bridge (claude CLI, billed to
+   * your Claude subscription). The schema is enforced by instruction +
+   * tolerant parsing rather than by the API's structured outputs.
+   */
+  async function localCall(system, user, schema, image) {
+    const fullSystem = system +
+      '\n\nOutput requirement: respond with ONLY a single JSON object that matches this JSON schema exactly — no markdown fences, no commentary before or after:\n' +
+      JSON.stringify(schema);
+    let res;
+    try {
+      res = await fetch('/local/claude', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          system: fullSystem,
+          user,
+          image: image ? { base64: image.base64, mediaType: image.mediaType } : null,
+        }),
+      });
+    } catch (_) {
+      throw new Error('Could not reach the local backend. Start the app with `python3 serve.py` to use Local Claude Code, or switch to the API backend in Settings.');
+    }
+    const data = await res.json().catch(() => null);
+    if (!res.ok) {
+      throw new Error((data && data.error) || `Local backend error (HTTP ${res.status}).`);
+    }
+    return extractJson(data.text);
+  }
+
   // ---------- classification (and transcription, for screenshots) ----------
 
   function classifySchema(withTranscription) {
@@ -77,14 +121,24 @@ const ClaudeAPI = (() => {
       system += `\n\nThe draft is provided as a screenshot. Also transcribe every piece of copy in it, faithfully and completely — the transcription becomes the working text for editing, so accuracy matters more than tidiness.`;
     }
 
+    let userText;
+    if (isImage) {
+      userText = 'Classify the writing in this screenshot and transcribe its copy.';
+      if (input.text) userText += `\n\nNotes from the author:\n${input.text}`;
+    } else {
+      userText = `Classify this piece of writing:\n\n<draft>\n${input.text}\n</draft>`;
+    }
+
+    if (backend() === 'local') {
+      return localCall(system, userText, classifySchema(isImage), input.image);
+    }
+
     const content = [];
     if (isImage) {
       content.push(imageBlock(input.image));
-      let prompt = 'Classify the writing in this screenshot and transcribe its copy.';
-      if (input.text) prompt += `\n\nNotes from the author:\n${input.text}`;
-      content.push({ type: 'text', text: prompt });
+      content.push({ type: 'text', text: userText });
     } else {
-      content.push({ type: 'text', text: `Classify this piece of writing:\n\n<draft>\n${input.text}\n</draft>` });
+      content.push({ type: 'text', text: userText });
     }
 
     const res = await fetch(API_URL, {
@@ -213,20 +267,32 @@ The draft was provided as a screenshot (${image.width}×${image.height} pixels),
    */
   async function edit(input, typeLabel, skills, apiKey, onProgress, passOpts) {
     const isRegen = !!(passOpts && passOpts.regen);
-    const content = [];
+
+    let userText;
     if (input.image) {
-      content.push(imageBlock(input.image));
-      let prompt = `Edit the copy in this screenshot. Transcription of the copy:\n\n<draft>\n${input.text}\n</draft>`;
-      if (input.notes) prompt += `\n\nNotes from the author:\n${input.notes}`;
-      content.push({ type: 'text', text: prompt });
+      userText = `Edit the copy in this screenshot. Transcription of the copy:\n\n<draft>\n${input.text}\n</draft>`;
+      if (input.notes) userText += `\n\nNotes from the author:\n${input.notes}`;
     } else {
       const verb = isRegen ? 'Run your editing pass on this draft' : 'Edit this draft';
-      content.push({ type: 'text', text: `${verb}:\n\n<draft>\n${input.text}\n</draft>` });
+      userText = `${verb}:\n\n<draft>\n${input.text}\n</draft>`;
     }
 
     const system = isRegen
       ? buildRegenPassSystemPrompt(typeLabel, skills, passOpts.label)
       : buildEditSystemPrompt(typeLabel, skills, input.image);
+
+    if (backend() === 'local') {
+      // No streaming through the CLI bridge — the spinner carries the wait.
+      return localCall(system, userText, editSchema(!!input.image), input.image);
+    }
+
+    const content = [];
+    if (input.image) {
+      content.push(imageBlock(input.image));
+      content.push({ type: 'text', text: userText });
+    } else {
+      content.push({ type: 'text', text: userText });
+    }
 
     const res = await fetch(API_URL, {
       method: 'POST',

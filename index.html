@@ -22,11 +22,22 @@
   <dialog id="settings-dialog">
     <form method="dialog" class="settings-form">
       <h2>Settings</h2>
+
+      <label class="settings-section-label">Backend</label>
+      <label class="radio-row">
+        <input type="radio" name="backend" id="backend-api" value="api" checked>
+        <span><strong>Anthropic API key</strong> — calls the Claude API directly from your browser. Works everywhere, billed as API usage.</span>
+      </label>
+      <label class="radio-row">
+        <input type="radio" name="backend" id="backend-local" value="local">
+        <span><strong>Local Claude Code</strong> — routes through the <code>claude</code> CLI on this machine, billed to your Claude subscription. Only works when the app is running via <code>serve.py</code> (local testing).</span>
+      </label>
+
       <label for="api-key-input">Anthropic API key</label>
       <input type="password" id="api-key-input" placeholder="sk-ant-…" autocomplete="off">
-      <p class="hint">Stored only in this browser (localStorage). The app calls the Claude API
-        directly from your browser — your text and key never touch any other server.
-        Get a key at <a href="https://platform.claude.com" target="_blank" rel="noopener">platform.claude.com</a>.</p>
+      <p class="hint">Stored only in this browser (localStorage). With the API backend, your text and key go only to Anthropic.
+        Get a key at <a href="https://platform.claude.com" target="_blank" rel="noopener">platform.claude.com</a>.
+        The key is not needed for the Local Claude Code backend.</p>
       <div class="dialog-actions">
         <button value="cancel" class="ghost-btn">Cancel</button>
         <button value="save" id="save-settings" class="primary-btn">Save</button>

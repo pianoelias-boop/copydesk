@@ -13,14 +13,17 @@ It's a static site — no backend, no build step. The app calls the Claude API d
 
 ## Run it locally
 
-The skills load via `fetch`, so the app needs to be served over HTTP (opening `index.html` directly from the filesystem won't work):
-
 ```sh
 cd "Writing App"
-python3 -m http.server 8000
+python3 serve.py        # http://localhost:8765
 ```
 
-Open http://localhost:8000, click **⚙ Settings**, paste your Anthropic API key (from [platform.claude.com](https://platform.claude.com)), and paste a draft.
+(The app must be served over HTTP — opening `index.html` directly won't work, the skills load via `fetch`.)
+
+Two backends, switchable in **⚙ Settings**:
+
+- **Anthropic API key** — the browser calls the Claude API directly. Works everywhere including the deployed site; billed as API usage. Get a key at [platform.claude.com](https://platform.claude.com).
+- **Local Claude Code** — `serve.py` routes requests through the `claude` CLI on your machine, billed to your Claude subscription (Pro/Max) instead of API credits. **Local testing only** (the deployed site has no server). Requires Claude Code installed and logged in. No streaming progress, runs count against your plan's usage limits, and screenshot annotation boxes may be less precise (the CLI's image handling differs from the API's high-res vision path).
 
 ## Deploy to GitHub Pages
 

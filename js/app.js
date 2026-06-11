@@ -40,6 +40,7 @@
   };
 
   const KEY_STORAGE = 'copydesk-api-key';
+  const BACKEND_STORAGE = 'copydesk-backend'; // 'api' | 'local'
   // Opus high-res vision maximum — coordinates map 1:1 to pixels at or below
   // this size, so we downscale client-side and annotate the same image we send.
   const MAX_IMAGE_EDGE = 2576;
@@ -49,15 +50,21 @@
 
   // ---------- settings ----------
   function getApiKey() { return localStorage.getItem(KEY_STORAGE) || ''; }
+  function getBackend() { return localStorage.getItem(BACKEND_STORAGE) || 'api'; }
 
   els.settingsBtn.addEventListener('click', () => {
     els.apiKeyInput.value = getApiKey();
+    const backend = getBackend();
+    document.getElementById('backend-api').checked = backend === 'api';
+    document.getElementById('backend-local').checked = backend === 'local';
     els.settingsDialog.showModal();
   });
 
   els.settingsDialog.addEventListener('close', () => {
     if (els.settingsDialog.returnValue === 'save') {
       localStorage.setItem(KEY_STORAGE, els.apiKeyInput.value.trim());
+      const backend = document.getElementById('backend-local').checked ? 'local' : 'api';
+      localStorage.setItem(BACKEND_STORAGE, backend);
     }
   });
 
@@ -186,8 +193,8 @@
     if (!text && !currentImage) { showError('Paste a draft or a screenshot first.'); return; }
 
     const apiKey = getApiKey();
-    if (!apiKey) {
-      showError('No API key set. Open Settings (top right) and add your Anthropic API key.');
+    if (getBackend() === 'api' && !apiKey) {
+      showError('No API key set. Open Settings (top right) and add your Anthropic API key — or switch the backend to Local Claude Code.');
       return;
     }
 
