@@ -60,6 +60,32 @@ const WordDiff = (() => {
     ).filter(seg => seg.type !== 'skip');
   }
 
+  /**
+   * Merge runs of changes separated only by whitespace into one del block +
+   * one ins block, so heavy rewrites read as "old phrase → new phrase"
+   * instead of alternating word-by-word noise.
+   */
+  function clusterChanges(segs) {
+    const out = [];
+    let i = 0;
+    while (i < segs.length) {
+      if (segs[i].type === 'equal') { out.push(segs[i]); i++; continue; }
+      let del = '', ins = '';
+      while (i < segs.length) {
+        const s = segs[i];
+        if (s.type === 'del') { del += s.text; i++; }
+        else if (s.type === 'ins') { ins += s.text; i++; }
+        else if (s.type === 'equal' && s.text.trim() === '' &&
+                 i + 1 < segs.length && segs[i + 1].type !== 'equal') {
+          del += s.text; ins += s.text; i++;
+        } else break;
+      }
+      if (del) out.push({ type: 'del', text: del });
+      if (ins) out.push({ type: 'ins', text: ins });
+    }
+    return out;
+  }
+
   function diff(oldText, newText) {
     let a = tokenize(oldText);
     let b = tokenize(newText);
@@ -95,7 +121,7 @@ const WordDiff = (() => {
     if (prefix) ops.push({ type: 'equal', text: prefix });
     ops.push(...middleOps);
     if (suffix) ops.push({ type: 'equal', text: suffix });
-    return coalesce(ops);
+    return clusterChanges(coalesce(ops));
   }
 
   return { diff };
