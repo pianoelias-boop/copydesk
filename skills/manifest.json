@@ -29,12 +29,11 @@
     { "id": "search-ads-craft", "label": "Search ads craft", "file": "skills/copywriting/references/formats/search-ads.md", "appliesTo": ["ad-copy"] },
     { "id": "social-posts-craft", "label": "Social posts craft", "file": "skills/copywriting/references/formats/social-posts.md", "appliesTo": ["social-post"] },
     { "id": "short-form-video-craft", "label": "Short-form video craft", "file": "skills/copywriting/references/formats/short-form-video.md", "appliesTo": ["short-form-video"] },
-    { "id": "blog-post", "label": "Article craft", "file": "skills/types/blog-post.md", "appliesTo": ["blog-post"] },
+    { "id": "article-craft", "label": "Article craft", "file": "skills/article-craft/SKILL.md", "appliesTo": ["blog-post", "case-study"] },
     { "id": "press-release-writing", "label": "Press release writing", "file": "skills/press-release-writing/SKILL.md", "appliesTo": ["press-release"] },
     { "id": "long-form-video-script", "label": "Long-form video script", "file": "skills/long-form-video-script/SKILL.md", "appliesTo": ["long-form-video"] },
     { "id": "saas-web-pages", "label": "SaaS web page best practices", "file": "skills/saas-web-page-best-practices/SKILL.md", "appliesTo": ["landing-page", "feature-page"] },
     { "id": "saas-feature-solution-pages", "label": "Feature & solution pages", "file": "skills/saas-web-page-best-practices/references/feature-solution-pages.md", "appliesTo": ["feature-page"] },
-    { "id": "saas-landing-campaign-pages", "label": "Landing & campaign pages", "file": "skills/saas-web-page-best-practices/references/landing-campaign-pages.md", "appliesTo": ["landing-page"] },
-    { "id": "case-study", "label": "Case study craft", "file": "skills/types/case-study.md", "appliesTo": ["case-study"] }
+    { "id": "saas-landing-campaign-pages", "label": "Landing & campaign pages", "file": "skills/saas-web-page-best-practices/references/landing-campaign-pages.md", "appliesTo": ["landing-page"] }
   ]
 }
