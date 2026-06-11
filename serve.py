@@ -141,6 +141,13 @@ def run_claude_streaming(req, emit):
 class Handler(SimpleHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    def end_headers(self):
+        # Local dev: never serve stale JS/CSS — a normal reload always picks
+        # up the latest code without needing a hard refresh.
+        if self.command == "GET":
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
     def _chunk(self, data: bytes):
         self.wfile.write(f"{len(data):x}\r\n".encode() + data + b"\r\n")
         self.wfile.flush()
