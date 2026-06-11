@@ -44,10 +44,49 @@ body {
 }
 
 main {
-  max-width: 1180px;
+  max-width: 1680px;
   margin: 0 auto;
   padding: 0 24px 60px;
 }
+
+/* Two-column workspace: input on the left, output on the right */
+.workspace {
+  display: grid;
+  grid-template-columns: minmax(380px, 5fr) minmax(0, 7fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.input-col {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.output-col { min-width: 0; }
+
+@media (max-width: 1000px) {
+  .workspace { grid-template-columns: 1fr; }
+  .input-col { position: static; max-height: none; }
+}
+
+.empty-state {
+  border-style: dashed;
+  box-shadow: none;
+  background: transparent;
+  text-align: center;
+  padding: 60px 36px;
+}
+
+.empty-state h2 {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin: 0 0 8px;
+}
+
+.empty-state p { max-width: 460px; margin: 0 auto; }
 
 .hidden { display: none !important; }
 .muted { color: var(--ink-soft); font-size: 13px; }
@@ -105,7 +144,7 @@ main {
 /* ---------- input ---------- */
 #draft-input {
   width: 100%;
-  min-height: 280px;
+  min-height: 44vh;
   resize: vertical;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -270,15 +309,12 @@ select:focus { outline: none; border-color: var(--ac-blue); box-shadow: 0 0 0 3p
   color: var(--ink);
 }
 
+/* Inside the right column the edited draft and the commentary stack vertically. */
 .results-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr);
+  grid-template-columns: 1fr;
   gap: 18px;
   align-items: start;
-}
-
-@media (max-width: 880px) {
-  .results-grid { grid-template-columns: 1fr; }
 }
 
 /* ---------- diff ---------- */
@@ -313,9 +349,11 @@ select:focus { outline: none; border-color: var(--ac-blue); box-shadow: 0 0 0 3p
 }
 
 /* ---------- changes panel ---------- */
-.changes-panel { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow-y: auto; }
-
-.changes-list { display: flex; flex-direction: column; gap: 10px; }
+.changes-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
 
 .change-card {
   position: relative;

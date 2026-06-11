@@ -10,6 +10,7 @@
     draftInput: $('draft-input'),
     wordCount: $('word-count'),
     runBtn: $('run-btn'),
+    emptyState: $('empty-state'),
     statusSection: $('status-section'),
     statusText: $('status-text'),
     errorSection: $('error-section'),
@@ -177,6 +178,7 @@
 
   async function runPipeline() {
     clearError();
+    els.emptyState.classList.add('hidden');
     els.resultsSection.classList.add('hidden');
 
     const text = els.draftInput.value.trim();
@@ -297,7 +299,7 @@
     });
 
     els.resultsSection.classList.remove('hidden');
-    els.resultsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    els.resultsSection.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   function renderAnnotations(image, changes) {
