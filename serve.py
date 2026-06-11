@@ -194,10 +194,16 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 def main():
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
+    args = [a for a in sys.argv[1:] if a != "--no-browser"]
+    port = int(args[0]) if args else 8765
     server = ThreadingHTTPServer(("127.0.0.1", port), Handler)
-    print(f"Copydesk running at http://localhost:{port}")
+    url = f"http://localhost:{port}"
+    print(f"Copydesk running at {url}")
     print("Local Claude Code backend available at POST /local/claude (streaming)")
+    print("Press Ctrl+C to stop.")
+    if "--no-browser" not in sys.argv:
+        import webbrowser
+        threading.Timer(0.5, lambda: webbrowser.open(url)).start()
     try:
         server.serve_forever()
     except KeyboardInterrupt:

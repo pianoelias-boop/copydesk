@@ -13,10 +13,13 @@ It's a static site — no backend, no build step. The app calls the Claude API d
 
 ## Run it locally
 
-```sh
-cd "Writing App"
-python3 serve.py        # http://localhost:8765
-```
+1. [Download the repo](https://github.com/pianoelias-boop/copydesk/archive/refs/heads/main.zip) (or `git clone`) and unzip it.
+2. **Mac:** double-click `Start Copydesk.command`. (First time, macOS may block it — right-click → Open → Open. If macOS offers to install Python/command-line tools, accept and run it again.)
+   **Windows:** double-click `Start Copydesk.bat` (needs [Python 3](https://www.python.org/downloads/) with "Add to PATH" checked).
+   **Terminal:** `python3 serve.py`
+3. Your browser opens to http://localhost:8765 automatically.
+
+Running locally with [Claude Code](https://claude.com/claude-code) installed and logged in unlocks the **Local Claude Code** backend in Settings — the app runs on your Claude subscription with no API key and no per-token charges.
 
 (The app must be served over HTTP — opening `index.html` directly won't work, the skills load via `fetch`.)
 
