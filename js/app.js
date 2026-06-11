@@ -157,6 +157,12 @@
     if (file && file.type.startsWith('image/')) setImage(file);
   });
 
+  // Deep edit defaults on; remember the user's last choice.
+  els.deepEdit.checked = (localStorage.getItem('copydesk-deep-edit') || '1') === '1';
+  els.deepEdit.addEventListener('change', () => {
+    localStorage.setItem('copydesk-deep-edit', els.deepEdit.checked ? '1' : '0');
+  });
+
   // ---------- input helpers ----------
   els.draftInput.addEventListener('input', () => {
     const words = (els.draftInput.value.match(/\S+/g) || []).length;
